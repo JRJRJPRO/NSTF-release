@@ -59,15 +59,18 @@ NSTF_MODEL/
 │       ├── instruction.txt           # 指令模板
 │       └── evaluation.txt            # 评估提示
 │
-├── nstf_builder/                     # NSTF图谱构建模块
+├── nstf_builder/                     # NSTF图谱构建模块 (V2.2)
 │   ├── README.md                     # 模块文档
-│   ├── builder.py                    # 图谱构建器
-│   ├── extractor.py                  # 知识抽取器
+│   ├── builder.py                    # 静态构建器 (NSTFBuilder)
+│   ├── incremental_builder.py        # 增量构建器 (IncrementalNSTFBuilder) ⭐
+│   ├── extractor.py                  # 程序结构提取器
+│   ├── character_resolver.py         # Character ID 解析器
+│   ├── episodic_linker.py            # Episodic 链接验证器
+│   ├── procedure_matcher.py          # Procedure 匹配器（用于融合）
+│   ├── utils.py                      # 公共工具（embedding 缓存）
 │   ├── config/                       # 配置
 │   │   └── default.json              # 默认配置
 │   └── prompts/                      # 提示词模板
-│       ├── detect.txt                # 任务检测提示
-│       └── structure.txt             # 结构化提示
 │
 ├── experiments/                      # 实验脚本
 │   ├── run_qa.py                     # 问答实验入口

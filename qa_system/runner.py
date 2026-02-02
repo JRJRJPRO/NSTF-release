@@ -687,11 +687,35 @@ class QARunner:
                 print(f"✓ 断点续跑: 已完成 {len(completed_ids)} 个问题")
         
         # 过滤已完成
+        total_before_filter = len(data_list)
         data_list = [d for d in data_list if d['id'] not in completed_ids]
         print(f"待处理: {len(data_list)} 个问题")
         
-        # 统计变量
-        results_count = len(completed_ids)
+        # 如果没有待处理的问题，给出明确提示
+        if len(data_list) == 0 and len(completed_ids) > 0:
+            print(f"\n{'='*60}")
+            print(f"⚠️ 所有 {len(completed_ids)} 个问题都已完成，没有新问题需要处理")
+            print(f"如需重新运行，请使用 --force 参数")
+            print(f"{'='*60}")
+            
+            if use_structured_storage:
+                print(f"结果目录: {store.dataset_dir}")
+                print(f"索引文件: {store.index_file}")
+            
+            return {
+                'total': len(completed_ids),
+                'correct': 0,  # 无法统计已完成的正确数
+                'accuracy': None,  # 明确表示未统计
+                'avg_rounds': None,
+                'avg_time_sec': None,
+                'method': method_name,
+                'dataset': dataset,
+                'skipped': True,
+                'message': f'所有 {len(completed_ids)} 个问题已完成，使用 --force 重新运行',
+            }
+        
+        # 统计变量（只统计本次运行的结果）
+        results_count = 0
         correct_count = 0
         total_rounds = 0
         total_time = 0.0
@@ -762,7 +786,9 @@ class QARunner:
         print(f"\n{'='*60}")
         print(f"测试完成")
         print(f"{'='*60}")
-        print(f"总题数: {results_count}")
+        if len(completed_ids) > 0:
+            print(f"已跳过: {len(completed_ids)} 个（已完成）")
+        print(f"本次处理: {results_count}")
         print(f"正确数: {correct_count}")
         print(f"准确率: {accuracy:.2%}")
         print(f"平均轮次: {avg_rounds:.2f}")

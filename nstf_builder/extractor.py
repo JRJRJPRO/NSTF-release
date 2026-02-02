@@ -245,3 +245,48 @@ Output JSON only."""
                 seen.add(goal)
                 unique.append(p)
         return unique[:max_count]
+    
+    def detect_in_clip(self, clip_content: Dict) -> Optional[Dict]:
+        """
+        检测单个 clip 是否包含程序性知识（用于增量构建）
+        
+        Args:
+            clip_content: {'clip_id': int, 'content': str, 'raw_content': str}
+            
+        Returns:
+            检测到的程序信息，或 None（如果没有程序性知识）
+        """
+        content = clip_content.get('content', '')
+        clip_id = clip_content.get('clip_id', 0)
+        
+        if not content or len(content.strip()) < 20:
+            return None
+        
+        prompt = f"""Analyze this video clip content. Does it contain any procedural knowledge?
+
+Procedural knowledge includes:
+1. **Task Procedures**: Step-by-step actions (cooking, assembling, operating)
+2. **Behavioral Habits**: Personal routines or patterns
+3. **Character Traits/Reactions**: Emotional or psychological response patterns
+4. **Social Patterns**: Interpersonal interaction dynamics
+
+Clip content:
+"{content[:300]}"
+
+If procedural knowledge exists, output JSON:
+{{"detected": true, "goal": "procedure name/trigger", "type": "task|habit|trait|social", "description": "brief description", "confidence": 0.8}}
+
+If NO procedural knowledge (just descriptions, narration, or unrelated content), output:
+{{"detected": false}}
+
+Output JSON only."""
+        
+        response = self._get_gemini_response(prompt, max_retries=3, timeout=30)
+        result = self._parse_json(response)
+        
+        if result and result.get('detected'):
+            # 添加 source clip 信息
+            result['source_clips'] = [clip_id]
+            return result
+        
+        return None

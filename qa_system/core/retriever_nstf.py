@@ -276,16 +276,29 @@ class NSTFRetriever:
                     clip_ids.add(clip_id)
         
         # 从video_graph获取clip内容
+        # 修复 bug: 使用正确的 API text_nodes_by_clip
         evidence = {}
         
-        # 尝试从video_graph.contents获取
-        if hasattr(video_graph, 'contents'):
-            contents = video_graph.contents
+        # 正确方式: 通过 text_nodes_by_clip 获取 clip 对应的节点
+        if hasattr(video_graph, 'text_nodes_by_clip'):
             for clip_id in clip_ids:
-                if clip_id in contents:
-                    evidence[clip_id] = contents[clip_id]
+                if clip_id not in video_graph.text_nodes_by_clip:
+                    continue
+                
+                node_ids = video_graph.text_nodes_by_clip[clip_id]
+                clip_contents = []
+                
+                for nid in node_ids:
+                    node = video_graph.nodes.get(nid)
+                    if node and hasattr(node, 'metadata'):
+                        # 从 metadata.contents 获取内容
+                        contents = node.metadata.get('contents', [])
+                        clip_contents.extend(contents)
+                
+                if clip_contents:
+                    evidence[clip_id] = ' '.join(clip_contents)
         
-        # 如果contents不可用，尝试其他方式
+        # Fallback: 尝试其他方式
         if not evidence and hasattr(video_graph, 'get_node_content'):
             for clip_id in clip_ids:
                 try:
