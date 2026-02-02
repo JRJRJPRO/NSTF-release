@@ -33,6 +33,7 @@ from .extractor import ProcedureExtractor
 from .character_resolver import CharacterResolver
 from .episodic_linker import EpisodicLinker
 from .procedure_matcher import ProcedureMatcher
+from .dag_fusion import DAGFusion, ProcedureFusionManager
 from .utils import get_normalized_embedding
 
 
@@ -84,6 +85,13 @@ class IncrementalNSTFBuilder:
             verify_threshold=self.config.get('verify_threshold', 0.35),
             discover_threshold=self.config.get('discover_threshold', 0.35),
             max_links_per_proc=self.config.get('max_links_per_proc', 10),
+            debug=debug,
+        )
+        
+        # DAG 融合管理器
+        self.fusion_manager = ProcedureFusionManager(
+            similarity_threshold=self.config.get('fusion_similarity_threshold', 0.80),
+            step_align_threshold=self.config.get('step_align_threshold', 0.75),
             debug=debug,
         )
         
@@ -341,9 +349,21 @@ class IncrementalNSTFBuilder:
         
         self.stats['videos_processed'] += 1
         
-        # 6. 构建统计信息
+        # 6. DAG 融合 - 对相似的 Procedure 进行结构融合
         proc_nodes = nstf_graph['procedure_nodes']
+        if len(proc_nodes) >= 2 and self.config.get('enable_fusion', True):
+            print(f"  融合相似的 DAG...")
+            procedures_before = len(proc_nodes)
+            fused_nodes = self.fusion_manager.fuse_all(proc_nodes)
+            nstf_graph['procedure_nodes'] = fused_nodes
+            proc_nodes = fused_nodes
+            procedures_after = len(proc_nodes)
+            if self.debug or procedures_before != procedures_after:
+                print(f"    融合: {procedures_before} → {procedures_after} procedures")
+        
+        # 7. 构建统计信息
         total_links = sum(len(p.get('episodic_links', [])) for p in proc_nodes.values())
+        fusion_stats = self.fusion_manager.get_stats()
         
         nstf_graph['stats'] = {
             'total_procedures': len(proc_nodes),
@@ -351,10 +371,14 @@ class IncrementalNSTFBuilder:
             'avg_links_per_proc': total_links / len(proc_nodes) if proc_nodes else 0,
             'merges': self.stats['procedures_merged'],
             'creates': self.stats['procedures_created'],
+            'dag_fusions': fusion_stats.get('total_fusions', 0),
         }
         
+        nstf_graph['metadata']['version'] = '2.3.0'
+        nstf_graph['metadata']['fusion_enabled'] = self.config.get('enable_fusion', True)
+        
         print(f"\n  === Build Statistics ===")
-        print(f"  Procedures: {len(proc_nodes)} (created: {self.stats['procedures_created']}, merged: {self.stats['procedures_merged']})")
+        print(f"  Procedures: {len(proc_nodes)} (created: {self.stats['procedures_created']}, merged: {self.stats['procedures_merged']}, dag_fused: {fusion_stats.get('total_fusions', 0)})")
         print(f"  Total links: {total_links}")
         print(f"  Avg links/proc: {nstf_graph['stats']['avg_links_per_proc']:.1f}")
         

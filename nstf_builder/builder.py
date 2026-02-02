@@ -25,6 +25,7 @@ setup_all()
 from .extractor import ProcedureExtractor
 from .character_resolver import CharacterResolver
 from .episodic_linker import EpisodicLinker
+from .dag_fusion import DAGFusion, ProcedureFusionManager
 from .utils import get_normalized_embedding, batch_get_normalized_embeddings
 
 
@@ -70,6 +71,13 @@ class NSTFBuilder:
             verify_threshold=self.config.get('verify_threshold', 0.35),
             discover_threshold=self.config.get('discover_threshold', 0.50),
             max_links_per_proc=self.config.get('max_links_per_proc', 10),
+            debug=debug,
+        )
+        
+        # ProcedureFusionManager（DAG 融合）
+        self.fusion_manager = ProcedureFusionManager(
+            similarity_threshold=self.config.get('fusion_similarity_threshold', 0.80),
+            step_align_threshold=self.config.get('step_align_threshold', 0.75),
             debug=debug,
         )
         
@@ -330,16 +338,28 @@ class NSTFBuilder:
         # 清除 EpisodicLinker 缓存（释放内存）
         self.episodic_linker.clear_cache()
         
+        # 6. DAG 融合 - 合并相似的 procedure
+        if len(procedure_nodes) >= 2 and self.config.get('enable_fusion', True):
+            print("  融合相似的 DAG...")
+            procedures_before = len(procedure_nodes)
+            procedure_nodes = self.fusion_manager.fuse_all(procedure_nodes)
+            procedures_after = len(procedure_nodes)
+            if self.debug or procedures_before != procedures_after:
+                print(f"    融合: {procedures_before} → {procedures_after} procedures")
+        
         self.stats['procedures_extracted'] += len(procedure_nodes)
         self.stats['videos_processed'] += 1
         
-        # 6. 构建统计信息
+        # 7. 构建统计信息
         total_links = sum(len(p.get('episodic_links', [])) for p in procedure_nodes.values())
+        fusion_stats = self.fusion_manager.get_stats()
         stats = {
             'total_procedures': len(procedure_nodes),
             'total_links': total_links,
             'avg_links_per_proc': total_links / len(procedure_nodes) if procedure_nodes else 0,
             'character_mapping_found': bool(self.character_resolver.mapping),
+            'fusion_performed': fusion_stats.get('total_fusions', 0),
+            'procedures_before_fusion': fusion_stats.get('procedures_before', len(procedure_nodes)),
         }
         
         if self.debug:
@@ -348,8 +368,9 @@ class NSTFBuilder:
             print(f"  Total links: {stats['total_links']}")
             print(f"  Avg links/proc: {stats['avg_links_per_proc']:.1f}")
             print(f"  Character mapping: {'Yes' if stats['character_mapping_found'] else 'No'}")
+            print(f"  Fusions performed: {stats['fusion_performed']}")
         
-        # 7. 保存
+        # 8. 保存
         output_subdir = self.output_dir / dataset
         output_subdir.mkdir(parents=True, exist_ok=True)
         
@@ -359,10 +380,11 @@ class NSTFBuilder:
             'procedure_nodes': procedure_nodes,
             'character_mapping': self.character_resolver.mapping,
             'metadata': {
-                'version': '2.2.2',
+                'version': '2.3.0',  # 版本更新: 添加 DAG 融合
                 'created_at': datetime.now().isoformat(),
                 'num_procedures': len(procedure_nodes),
-                'processing_time': time.time() - start_time
+                'processing_time': time.time() - start_time,
+                'fusion_enabled': self.config.get('enable_fusion', True),
             },
             'stats': stats
         }
