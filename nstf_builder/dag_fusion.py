@@ -2,15 +2,10 @@
 """
 DAG 融合模块
 
-实现论文中描述的程序融合算法:
 1. 节点对齐 (Node Alignment): 通过 embedding 相似度 + 最优二部匹配
 2. 参数池化 (Parameter Pooling): 贝叶斯方式合并转移概率
 3. 边保留 (Edge Preservation): 保留所有观测到的替代路径
 
-参考论文: TWCS-KDD-25 Section 3.2 (SK-Gen Algorithm)
-- Definition 3.3 (Symbolic Structure Fusion)
-- Theorem 3.3 (Path Preservation)
-- Theorem 3.4 (Transition Probability Convergence)
 """
 
 import numpy as np

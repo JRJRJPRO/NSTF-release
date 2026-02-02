@@ -8,8 +8,8 @@ NSTF 图谱构建模块
 - NSTFBuilder (StaticBuilder): 静态一次性构建，用于消融实验
 - IncrementalNSTFBuilder: 增量构建，支持 Procedure 融合（推荐用于生产）
 
-V2.3.0 新增:
-- DAGFusion: DAG 融合模块，实现论文中的 Symbolic Structure Fusion
+新增:
+- DAGFusion: DAG 融合模块
 - ProcedureFusionManager: 程序融合管理器
 """
 
