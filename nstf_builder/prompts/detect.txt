@@ -1,0 +1,20 @@
+Analyze video content (clips {start_clip}-{end_clip}) to identify procedural knowledge patterns.
+
+Procedural knowledge includes:
+1. **Task Procedures**: Step-by-step processes (e.g., cooking, assembling, operating)
+2. **Behavioral Habits**: Recurring personal routines (e.g., checking keys before leaving)
+3. **Character Traits & Reactions**: Consistent psychological or emotional response patterns (e.g., getting angry when interrupted, becoming shy around strangers)
+4. **Social Interaction Patterns**: Recurring interpersonal dynamics (e.g., conflict resolution style, greeting habits)
+
+Content:
+{contents}
+
+Identify up to {max_procedures} procedures. Output JSON:
+{{"procedures": [{{"goal": "procedure name/trigger condition", "type": "task|habit|trait|social", "description": "brief description", "confidence": 0.9, "source_clips": [1,2,3], "can_merge_with": []}}]}}
+
+Important:
+- For character traits/reactions, the "goal" should describe the trigger condition (e.g., "When <face_1> is interrupted while working")
+- Include source_clips to enable linking back to episodic memories
+- If you detect procedures that could be merged (same goal, different paths), note them in "can_merge_with"
+- For multi-cause patterns (e.g., multiple reasons leading to same emotion), detect them as separate procedures that can later be merged into a DAG
+- Output JSON only.

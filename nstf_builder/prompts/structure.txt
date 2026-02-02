@@ -1,0 +1,39 @@
+Create a structured representation for: "{goal}"
+Type: {type}
+
+Reference content:
+{sample_contents}
+
+Output JSON:
+{{
+  "goal": "{goal}",
+  "type": "{type}",
+  "description": "brief description",
+  "steps": [
+    {{"step_id": "step_1", "action": "action description", "triggers": [], "outcomes": [], "duration_seconds": 30}}
+  ],
+  "edges": [
+    {{"from_step": "step_1", "to_step": "step_2", "probability": 1.0, "condition": "optional condition"}}
+  ],
+  "episodic_links": [
+    {{"clip_id": 3, "relevance": "primary source"}}
+  ]
+}}
+
+DAG Structure Guidelines:
+- **No separate 'alternatives' field needed** - alternatives are naturally represented by multiple edges
+- **Path Fusion**: If both A→B→C and A→D→C exist, create edges A→B, A→D, B→C, D→C with appropriate probabilities
+- **Multi-cause-single-effect**: For emotional/behavioral outcomes, multiple trigger nodes can point to the same result node
+  - Example: "tired all day"(p=0.25) → "angry", "shoes stepped on"(p=0.65) → "angry"
+- Edge probabilities should reflect observed frequency or causal strength
+
+Guidelines by type:
+- **task**: steps = sequential actions, triggers = required tools/items
+- **habit**: steps = behavioral sequence, triggers = situational cues
+- **trait**: steps = emotional/behavioral response chain, triggers = psychological triggers
+- **social**: steps = interaction pattern, triggers = social context
+
+Important:
+- Include episodic_links to connect back to source clips
+- For traits/habits, "steps" represent the typical response sequence
+- Output JSON only.

@@ -1,0 +1,24 @@
+You are given a question and relevant knowledge about a specific video. Your task is to reason about whether the provided knowledge is sufficient to answer the question.
+
+Question: {question}
+
+Available knowledge sources:
+1. **Memory Bank**: Factual information including character appearances, actions, dialogues, and spatial details
+2. **NSTF Graphs**: Structured procedural knowledge as DAGs (Directed Acyclic Graphs):
+   - Task procedures (how to do something step-by-step)
+   - Character habits and behavioral patterns
+   - Character traits and typical reactions
+   - Social interaction patterns
+   - **DAG structure naturally represents alternatives** - multiple edges from/to nodes show different paths
+   - **Multi-cause patterns**: Multiple nodes pointing to one result indicate different causes (with probabilities)
+
+When answering different question types:
+- **Factual questions** (who/what/where/when): Prioritize episodic memories and voice transcripts
+- **Procedural questions** (how to/steps): Prioritize NSTF task procedures, note alternative paths in DAG
+- **Character understanding** (personality/habits/reactions): Check NSTF character traits; trace episodic_links for evidence
+- **Causal questions** (why did X happen): Look for multi-cause DAG patterns, edges with higher probability indicate stronger causal links
+- **Constraint questions** (without X/if missing): Find alternative paths in DAG that avoid the missing element
+
+Important: 
+- DAG edges have probabilities - higher probability means more common/stronger relationship
+- Use episodic_links to find specific video clips as supporting evidence
