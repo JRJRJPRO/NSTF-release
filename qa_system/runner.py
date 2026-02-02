@@ -285,11 +285,22 @@ class QARunner:
         return videos
     
     def detect_nstf_graph(self, video_name: str, dataset: str) -> Optional[str]:
-        """检测NSTF图谱是否存在"""
+        """检测NSTF图谱是否存在
+        
+        优先级：incremental > static
+        """
         nstf_dir = self.data_dir / 'nstf_graphs' / dataset
-        nstf_path = nstf_dir / f'{video_name}_nstf.pkl'
-        if nstf_path.exists():
-            return str(nstf_path)
+        
+        # 优先查找增量构建的图谱
+        incremental_path = nstf_dir / f'{video_name}_nstf_incremental.pkl'
+        if incremental_path.exists():
+            return str(incremental_path)
+        
+        # 其次查找静态构建的图谱
+        static_path = nstf_dir / f'{video_name}_nstf.pkl'
+        if static_path.exists():
+            return str(static_path)
+        
         return None
     
     def prepare_data(
@@ -342,6 +353,7 @@ class QARunner:
                     'question': qa['question'],
                     'answer': qa['answer'],
                     'type': qa.get('type', []),
+                    'type_query': qa.get('type_query'),  # 从原始数据读取 type_query
                     'nstf_available': nstf_available,
                     'nstf_path': nstf_path,
                 }
@@ -855,7 +867,8 @@ class QARunner:
             
             # 类型标注
             'type_original': result.get('type', []),
-            'type_query': query_type_map.get(question_id),
+            # type_query: 优先使用外部标注文件覆盖，否则用原始数据中的
+            'type_query': query_type_map.get(question_id) or result.get('type_query'),
             
             # 结果
             'response': result.get('response', ''),

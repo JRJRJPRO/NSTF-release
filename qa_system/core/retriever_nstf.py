@@ -5,7 +5,11 @@ NSTF检索器 - 基于Procedure的增强检索
 特性:
 1. 多粒度Procedure匹配 (goal + steps)
 2. episodic_links证据追溯
-3. 智能fallback到baseline
+3. 三种Symbolic查询函数:
+   - get_procedure_with_evidence(): 核心检索
+   - query_step_sequence(): 时序查询
+   - aggregate_character_behaviors(): 人物行为聚合
+4. 智能fallback到baseline
 
 基于 Stage 1/2 实验验证:
 - threshold=0.30 (从0.40降低，提高命中率)
@@ -13,6 +17,7 @@ NSTF检索器 - 基于Procedure的增强检索
 - 不使用back_translate (实验证明无效)
 """
 
+import re
 import pickle
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
@@ -143,23 +148,60 @@ class NSTFRetriever:
                 metadata['fallback_reason'] = f'Top sim {matched_procs[0]["similarity"]:.3f} < min_confidence {self.min_confidence}'
             return memories, current_clips, metadata
         
-        # 使用NSTF
+        # 使用NSTF - 根据问题类型选择Symbolic函数
         metadata['decision'] = 'use_nstf'
         metadata['matched_procedures'] = [
             {'proc_id': p['proc_id'], 'similarity': p['similarity'], 'match_type': p['match_type']}
             for p in matched_procs[:self.max_procedures]
         ]
         
+        # 分类问题类型
+        query_type = self._classify_query(query)
+        metadata['query_type'] = query_type
+        
         memories = {}
         
-        # 1. 添加Procedure结构化信息
-        proc_info = self._format_procedures_for_prompt(
-            matched_procs[:self.max_procedures], 
-            nstf_graph
-        )
-        memories['NSTF_Procedures'] = proc_info
+        if query_type == 'temporal':
+            # 时序查询：使用query_step_sequence()
+            step_result = self.query_step_sequence(
+                matched_procs[0]['proc_id'], 
+                nstf_graph, 
+                query
+            )
+            memories['NSTF_StepQuery'] = self._format_step_query_result(step_result)
+            metadata['symbolic_function'] = 'query_step_sequence'
+            
+        elif query_type == 'character':
+            # 人物理解：使用aggregate_character_behaviors()
+            # 从query中提取人物ID
+            character_id = self._extract_character_from_query(query, video_graph)
+            if character_id:
+                char_result = self.aggregate_character_behaviors(
+                    character_id, 
+                    nstf_graph, 
+                    video_graph
+                )
+                memories['NSTF_CharacterAnalysis'] = self._format_character_result(char_result)
+                metadata['symbolic_function'] = 'aggregate_character_behaviors'
+                metadata['character_id'] = character_id
+            else:
+                # 无法提取人物，fallback到普通Procedure检索
+                proc_info = self._format_procedures_for_prompt(
+                    matched_procs[:self.max_procedures], 
+                    nstf_graph
+                )
+                memories['NSTF_Procedures'] = proc_info
+                metadata['symbolic_function'] = 'get_procedure_with_evidence'
+        else:
+            # 默认：使用get_procedure_with_evidence()
+            proc_info = self._format_procedures_for_prompt(
+                matched_procs[:self.max_procedures], 
+                nstf_graph
+            )
+            memories['NSTF_Procedures'] = proc_info
+            metadata['symbolic_function'] = 'get_procedure_with_evidence'
         
-        # 2. 可选：追溯episodic证据
+        # 追溯episodic证据（所有模式都需要）
         if self.include_episodic_evidence:
             evidence_clips = self._extract_episodic_evidence(
                 matched_procs[:self.max_procedures],
@@ -171,9 +213,314 @@ class NSTFRetriever:
                 if clip_id not in current_clips:
                     current_clips.append(clip_id)
         
-        metadata['num_evidence_clips'] = len(memories) - 1  # 减去NSTF_Procedures
+        metadata['num_evidence_clips'] = len(memories) - 1
         
         return memories, current_clips, metadata
+    
+    # ==================== 三种Symbolic函数 ====================
+    
+    def query_step_sequence(
+        self, 
+        proc_id: str, 
+        nstf_graph: Dict,
+        query: str
+    ) -> Dict[str, Any]:
+        """
+        Symbolic函数2: 时序/步骤查询
+        
+        用于回答:
+        - "有多少步?" → 返回步骤数
+        - "第一步/最后一步是什么?" → 返回特定步骤
+        - "X之后做了什么?" → 找到X，返回下一步
+        
+        Args:
+            proc_id: Procedure ID
+            nstf_graph: NSTF图谱
+            query: 原始查询（用于推断查询类型）
+            
+        Returns:
+            {
+                'proc_id': str,
+                'goal': str,
+                'total_steps': int,
+                'query_type': str,  # 'count', 'first', 'last', 'after', 'before', 'all'
+                'result': str,      # 查询结果
+                'full_sequence': List[str],  # 完整步骤序列
+            }
+        """
+        proc_nodes = nstf_graph.get('procedure_nodes', {})
+        proc = proc_nodes.get(proc_id, {})
+        
+        steps = proc.get('steps', [])
+        step_actions = []
+        for s in steps:
+            if isinstance(s, dict):
+                action = s.get('action', '')
+                if action:
+                    step_actions.append(action)
+        
+        result = {
+            'proc_id': proc_id,
+            'goal': proc.get('goal', 'Unknown'),
+            'total_steps': len(step_actions),
+            'full_sequence': step_actions,
+            'query_type': 'all',
+            'result': None,
+        }
+        
+        if not step_actions:
+            result['result'] = 'No steps found'
+            return result
+        
+        query_lower = query.lower()
+        
+        # 判断查询类型
+        if any(kw in query_lower for kw in ['how many', 'count', '多少步', '几步']):
+            result['query_type'] = 'count'
+            result['result'] = f'{len(step_actions)} steps'
+            
+        elif any(kw in query_lower for kw in ['first', 'begin', 'start', '第一', '开始']):
+            result['query_type'] = 'first'
+            result['result'] = step_actions[0]
+            
+        elif any(kw in query_lower for kw in ['last', 'final', 'end', '最后', '结束']):
+            result['query_type'] = 'last'
+            result['result'] = step_actions[-1]
+            
+        elif any(kw in query_lower for kw in ['after', 'then', 'next', '之后', '然后']):
+            result['query_type'] = 'after'
+            # 尝试找到参考动作
+            ref_action = self._find_reference_action(query, step_actions)
+            if ref_action and ref_action['index'] < len(step_actions) - 1:
+                result['result'] = step_actions[ref_action['index'] + 1]
+                result['reference'] = ref_action['action']
+            else:
+                result['result'] = step_actions[-1] if step_actions else 'Unknown'
+                
+        elif any(kw in query_lower for kw in ['before', 'previous', '之前']):
+            result['query_type'] = 'before'
+            ref_action = self._find_reference_action(query, step_actions)
+            if ref_action and ref_action['index'] > 0:
+                result['result'] = step_actions[ref_action['index'] - 1]
+                result['reference'] = ref_action['action']
+            else:
+                result['result'] = step_actions[0] if step_actions else 'Unknown'
+        else:
+            # 默认返回所有步骤
+            result['query_type'] = 'all'
+            result['result'] = ' → '.join(step_actions)
+        
+        return result
+    
+    def aggregate_character_behaviors(
+        self,
+        character_id: str,
+        nstf_graph: Dict,
+        video_graph
+    ) -> Dict[str, Any]:
+        """
+        Symbolic函数3: 人物行为模式聚合
+        
+        用于回答: "Bob熟悉做饭吗?" "character_0有什么习惯?"
+        
+        Args:
+            character_id: 人物ID (如 "character_0")
+            nstf_graph: NSTF图谱
+            video_graph: 视频图谱
+            
+        Returns:
+            {
+                'character': str,
+                'involved_procedures': List[Dict],  # 涉及的Procedure列表
+                'behavior_summary': str,            # 行为模式摘要
+                'evidence_clips': List[int],        # 证据clip列表
+            }
+        """
+        proc_nodes = nstf_graph.get('procedure_nodes', {})
+        
+        involved_procs = []
+        evidence_clips = set()
+        
+        # 遍历所有Procedure，找到涉及该人物的
+        for proc_id, proc in proc_nodes.items():
+            episodic_links = proc.get('episodic_links', [])
+            
+            # 检查该Procedure的episodic_links是否涉及该人物
+            proc_involves_character = False
+            proc_clips = []
+            
+            for link in episodic_links:
+                clip_id = link.get('clip_id')
+                if clip_id is None:
+                    continue
+                
+                # 检查该clip的内容是否涉及该人物
+                clip_content = self._get_clip_content(video_graph, clip_id)
+                if character_id in clip_content:
+                    proc_involves_character = True
+                    proc_clips.append(clip_id)
+            
+            if proc_involves_character:
+                involved_procs.append({
+                    'proc_id': proc_id,
+                    'goal': proc.get('goal', 'Unknown'),
+                    'proc_type': proc.get('proc_type', 'task'),
+                    'clips': proc_clips,
+                })
+                evidence_clips.update(proc_clips)
+        
+        # 生成行为摘要
+        if involved_procs:
+            proc_types = [p['proc_type'] for p in involved_procs]
+            goals = [p['goal'] for p in involved_procs]
+            
+            type_counts = {}
+            for t in proc_types:
+                type_counts[t] = type_counts.get(t, 0) + 1
+            
+            summary_parts = [f"{character_id} is involved in {len(involved_procs)} procedure(s):"]
+            for proc in involved_procs:
+                summary_parts.append(f"  - {proc['goal']} ({proc['proc_type']})")
+            
+            # 尝试推断行为模式
+            if len(involved_procs) >= 2:
+                common_words = self._find_common_themes(goals)
+                if common_words:
+                    summary_parts.append(f"Behavior pattern: Frequently involved in {', '.join(common_words)}-related activities.")
+        else:
+            summary_parts = [f"No procedure information found for {character_id}."]
+        
+        return {
+            'character': character_id,
+            'involved_procedures': involved_procs,
+            'behavior_summary': '\n'.join(summary_parts),
+            'evidence_clips': sorted(evidence_clips),
+        }
+    
+    # ==================== 辅助方法 ====================
+    
+    def _classify_query(self, query: str) -> str:
+        """分类问题类型: temporal, character, or procedure"""
+        query_lower = query.lower()
+        
+        # 时序问题关键词
+        temporal_keywords = [
+            'after', 'before', 'then', 'next', 'first', 'last', 'step',
+            'how many steps', 'sequence', 'order',
+            '之后', '之前', '然后', '第一步', '最后', '步骤', '顺序'
+        ]
+        if any(kw in query_lower for kw in temporal_keywords):
+            return 'temporal'
+        
+        # 人物理解关键词
+        character_keywords = [
+            'familiar', 'usually', 'habit', 'often', 'good at', 'skilled',
+            'frequently', 'tend to', 'pattern', 'behavior',
+            '熟悉', '习惯', '擅长', '经常', '行为', '模式'
+        ]
+        if any(kw in query_lower for kw in character_keywords):
+            return 'character'
+        
+        return 'procedure'
+    
+    def _extract_character_from_query(self, query: str, video_graph) -> Optional[str]:
+        """从查询中提取人物ID"""
+        # 方法1: 直接匹配 character_X
+        match = re.search(r'character_(\d+)', query.lower())
+        if match:
+            return f'character_{match.group(1)}'
+        
+        # 方法2: 尝试从video_graph的character_mappings中匹配人名
+        if hasattr(video_graph, 'character_name_to_id'):
+            for name, char_id in video_graph.character_name_to_id.items():
+                if name.lower() in query.lower():
+                    return char_id
+        
+        # 方法3: 匹配常见人名模式
+        # 如果query中有人名但没有mapping，返回None
+        return None
+    
+    def _find_reference_action(self, query: str, step_actions: List[str]) -> Optional[Dict]:
+        """从查询中找到参考的动作"""
+        query_lower = query.lower()
+        
+        for i, action in enumerate(step_actions):
+            # 检查action中的关键词是否出现在query中
+            action_words = action.lower().split()
+            for word in action_words:
+                if len(word) > 3 and word in query_lower:  # 忽略短词
+                    return {'action': action, 'index': i}
+        
+        return None
+    
+    def _find_common_themes(self, goals: List[str]) -> List[str]:
+        """从目标列表中找出共同主题"""
+        # 简单实现：找高频词
+        word_counts = {}
+        stop_words = {'the', 'a', 'an', 'to', 'for', 'of', 'in', 'on', 'with', 'and'}
+        
+        for goal in goals:
+            words = goal.lower().split()
+            for word in words:
+                if word not in stop_words and len(word) > 3:
+                    word_counts[word] = word_counts.get(word, 0) + 1
+        
+        # 返回出现多次的词
+        common = [w for w, c in word_counts.items() if c >= 2]
+        return common[:3]  # 最多返回3个
+    
+    def _get_clip_content(self, video_graph, clip_id: int) -> str:
+        """获取clip的内容"""
+        if not hasattr(video_graph, 'text_nodes_by_clip'):
+            return ''
+        
+        if clip_id not in video_graph.text_nodes_by_clip:
+            return ''
+        
+        node_ids = video_graph.text_nodes_by_clip[clip_id]
+        contents = []
+        
+        for nid in node_ids:
+            node = video_graph.nodes.get(nid)
+            if node and hasattr(node, 'metadata'):
+                node_contents = node.metadata.get('contents', [])
+                contents.extend(node_contents)
+        
+        return ' '.join(contents)
+    
+    def _format_step_query_result(self, result: Dict) -> str:
+        """格式化时序查询结果"""
+        lines = [
+            "[Step Sequence Query]",
+            f"Procedure: {result['goal']}",
+            f"Total Steps: {result['total_steps']}",
+            f"Query Type: {result['query_type']}",
+        ]
+        
+        if result.get('reference'):
+            lines.append(f"Reference: {result['reference']}")
+        
+        lines.append(f"Answer: {result['result']}")
+        
+        if result['total_steps'] > 0:
+            sequence = ' → '.join(result['full_sequence'])
+            lines.append(f"Full Sequence: {sequence}")
+        
+        return '\n'.join(lines)
+    
+    def _format_character_result(self, result: Dict) -> str:
+        """格式化人物聚合结果"""
+        lines = [
+            "[Character Behavior Analysis]",
+            f"Character: {result['character']}",
+            "",
+            result['behavior_summary'],
+        ]
+        
+        if result['evidence_clips']:
+            lines.append(f"\nEvidence from clips: {result['evidence_clips']}")
+        
+        return '\n'.join(lines)
     
     def _search_procedures(
         self, 
