@@ -3,7 +3,6 @@
 神经符号任务流（Neural-Symbolic Task Flow）项目 
 
 ## 背景
-原来的代码都在/data1/rongjiej/BytedanceM3Agent，这里面包含了baseline模型和新模型，我要用新模型做实验写论文，但由于原来的文件夹屎山代码太多，所以现在搬到了新文件夹这里，
 关于baseline的源码在resource/m3-agent-master
 
 
@@ -71,6 +70,21 @@ NSTF_MODEL/
 │   ├── config/                       # 配置
 │   │   └── default.json              # 默认配置
 │   └── prompts/                      # 提示词模板
+│
+├── analysis/                         # 图谱与问答分析模块 ⭐ NEW
+│   ├── README.md                     # 模块文档（含 Schema 说明）
+│   ├── config.json                   # 配置文件
+│   ├── run.py                        # 统一入口脚本
+│   ├── video_list.json               # 待分析视频列表
+│   ├── parsers/                      # 解析器
+│   │   ├── graph_parser.py           # 图谱解析器
+│   │   └── qa_parser.py              # 问答结果解析器
+│   └── data/                         # 解析输出（按视频组织）
+│       └── <video_id>/               # 每个视频一个文件夹
+│           ├── graph_analysis.md     # 图谱解析文档
+│           └── qa_results/           # 问答分析
+│               ├── Q01_analysis.md
+│               └── ...
 │
 ├── experiments/                      # 实验脚本
 │   ├── run_qa.py                     # 问答实验入口

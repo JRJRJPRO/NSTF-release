@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0",
+  "status": "success",
+  "error_message": null,
+  "id": "3XBBBEEYWo4_Q3",
+  "video_id": "3XBBBEEYWo4",
+  "dataset": "web",
+  "method": "baseline",
+  "question": "How many professional therapists are available on the BetterHelp website?",
+  "answer": "There are more than 30,000.",
+  "type_original": [
+    "General Knowledge Extraction"
+  ],
+  "type_query": "Factual",
+  "response": "Over 30,000 licensed professional therapists.",
+  "gpt_eval": true,
+  "num_rounds": 2,
+  "elapsed_time_sec": 13.52,
+  "search_count": 1,
+  "retrieval_trace": [
+    {
+      "round": 1,
+      "query": "Number of professional therapists on BetterHelp website",
+      "num_results": 2,
+      "clips": []
+    }
+  ],
+  "token_stats": {
+    "total_input_tokens": null,
+    "total_output_tokens": null
+  },
+  "nstf_available": false,
+  "nstf_path": null,
+  "mem_path": "/data1/rongjiej/NSTF_MODEL/data/memory_graphs/web/3XBBBEEYWo4.pkl",
+  "timestamp": "2026-02-02T22:41:59.932",
+  "llm_model": "qwen3-max",
+  "gpt_model": "gpt-4o",
+  "conversations": [
+    {
+      "role": "system",
+      "content": "You are given a question and some relevant knowledge. Your task is to reason about whether the provided knowledge is sufficient to answer the question. If it is sufficient, output [Answer] followed by the answer. If it is not sufficient, output [Search] and generate a query that will be encoded into embeddings for a vector similarity search. The query will help retrieve additional information from a memory bank.\n\nQuestion: How many professional therapists are available on the BetterHelp website?\n"
+    },
+    {
+      "role": "user",
+      "content": "Searched knowledge: {}"
+    },
+    {
+      "role": "assistant",
+      "content": "<think>\nOkay, the user is asking how many professional therapists are available on the BetterHelp website. Let me check the provided knowledge to see if there's an answer.\n\nLooking at the \"Searched knowledge\" section, it's empty. That means there's no existing information given here. Since the user's instruction says that if the answer can't be derived from the provided knowledge, I should output a search query. \n\nThe question is specific to the number of therapists on BetterHelp. Since the knowledge base is empty, I don't have any data to answer this. The correct action here is to perform a search. The search query needs to be a single question that will retrieve the missing info. The example queries mention using character IDs, but that's not relevant here. The key is to phrase the search query effectively. \n\nSo, the appropriate search query would be something like \"Number of professional therapists on BetterHelp website\". That should fetch the required information from the memory bank or external sources.\n</think>\n\nAction: [Search]\nContent: Number of professional therapists on BetterHelp website"
+    },
+    {
+      "role": "user",
+      "content": "Searched knowledge: {\"CLIP_3\": [\"<character_0> describes BetterHelp, an online therapy platform.\", \"BetterHelp has over 30,000 licensed professional therapists with diverse specialties and backgrounds.\", \"The platform aims to provide a suitable therapist for everyone.\", \"<character_0> finds online therapy more comfortable and convenient.\", \"Online therapy allows sessions from home, eliminating the need to leave the house.\", \"This flexibility makes it easier to integrate therapy into one's schedule.\", \"To begin, users fill out a questionnaire.\", \"BetterHelp matches users with a therapist within a few days.\", \"<character_0>'s family supports therapy and is enthusiastic about <character_0>'s journey.\", \"They have had positive experiences with therapy.\", \"Initially, <character_0> found opening up challenging.\", \"BetterHelp allows users to switch therapists at no extra cost if the initial match isn't ideal.\", \"BetterHelp ensures that therapists on the platform are well-qualified.\", \"<character_0> values the convenience and comfort of online therapy.\", \"<character_0>'s family is supportive of <character_0>'s decision to pursue therapy.\", \"BetterHelp offers a therapist matching service based on a questionnaire.\", \"BetterHelp allows users to switch therapists without additional cost.\", \"BetterHelp ensures its therapists are well-qualified.\", \"The video aims to inform viewers about the benefits and process of using BetterHelp.\", \"The video promotes mental health and seeking professional help.\"], \"CLIP_4\": [\"<voice_2> speaks, promoting BetterHelp for the new year.\", \"<voice_2> is in a room with a pink bed, white dresser, and neon signs.\", \"<voice_2> wears a sleeveless coral top.\", \"<voice_2> suggests setting goals for the new year, prioritizing happiness and mental health.\", \"<voice_2> encourages viewers to start fresh this new year or any day with BetterHelp.\", \"A QR code and BetterHelp's website address are displayed on screen.\", \"<voice_2> thanks BetterHelp for sponsoring the video.\", \"<character_0> is in bed, wearing red pajamas.\", \"<character_0> greets viewers, wishing them a happy spring semester.\", \"<character_0> says it is Tuesday, January 21, 2025, at 8:00 a.m.\", \"<character_0> expresses excitement about the first day of the second semester.\", \"<character_0> promotes BetterHelp, a mental health service.\", \"<character_0> prioritizes happiness and mental health.\", \"<character_0> is a student.\", \"<character_0> is excited about the start of a new semester.\", \"The video is a sponsored advertisement for BetterHelp, integrated into a personal vlog-style update.\", \"The video promotes the idea of setting goals for the new year and prioritizing mental well-being.\"]}"
+    },
+    {
+      "role": "assistant",
+      "content": "<think>\nOkay, let's see. The user asked how many professional therapists are available on the BetterHelp website. I need to check the provided knowledge to see if there's an answer.\n\nLooking at the searched knowledge, there's a CLIP_3 entry that says \"BetterHelp has over 30,000 licensed professional therapists with diverse specialties and backgrounds.\" That seems like a direct answer. The number 30,000 is mentioned, so that's probably the figure they're looking for. The other clips don't mention a specific number, so CLIP_3 is the key here. Since the answer is in the knowledge provided, I should output [Answer] with the content \"Over 30,000 licensed professional therapists.\"\n</think>\n\nAction: [Answer]\nContent: Over 30,000 licensed professional therapists."
+    }
+  ]
+}

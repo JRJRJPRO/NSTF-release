@@ -15,9 +15,11 @@ from typing import Dict, List, Optional, Any
 from pathlib import Path
 from datetime import datetime
 
-from .config import QAConfig
+from .config import QAConfig, BaselineConfig, NSTFConfig, get_mode_config
 from .prompts import get_system_prompt, get_instruction
 from .core import Retriever, Evaluator, LLMClient
+from .core.hybrid_retriever import HybridRetriever, create_retriever, RetrievalResult
+from .core.name_resolver import NameResolver
 
 
 # Schema 版本
@@ -27,8 +29,15 @@ SCHEMA_VERSION = "1.0"
 ACTION_PATTERN = r"Action: \[(.*)\].*Content: (.*)"
 
 
-def get_method_name(ablation_mode: Optional[str]) -> str:
-    """根据 ablation_mode 获取 method 名称"""
+def get_method_name(mode: str = None, ablation_mode: str = None) -> str:
+    """根据 mode 或 ablation_mode 获取 method 名称"""
+    # 优先使用新的 mode 参数
+    if mode:
+        if mode == 'nstf_full':
+            return 'nstf'
+        return mode
+    
+    # 兼容旧的 ablation_mode 参数
     if ablation_mode is None or ablation_mode == 'full_nstf':
         return 'nstf'
     elif ablation_mode == 'baseline':
@@ -186,9 +195,26 @@ class QARunner:
     
     def _init_components(self):
         """初始化各组件"""
-        # 根据配置选择检索器
-        if self.config.retrieval_strategy == 'node_level':
-            # 使用 V2 检索器（节点级别）
+        mode = getattr(self.config, 'mode', 'baseline')
+        
+        # 优先使用新的 HybridRetriever
+        if mode in ['baseline', 'nstf_full', 'ablation_prototype', 'ablation_structure']:
+            self.retriever = create_retriever(
+                mode=mode,
+                threshold=self.config.nstf_threshold,
+                min_confidence=self.config.nstf_min_confidence,
+                max_procedures=self.config.nstf_max_procedures,
+                threshold_baseline=self.config.threshold_baseline,
+                topk=self.config.topk,
+                use_reranking=self.config.nstf_use_reranking,
+                use_dag_paths=self.config.nstf_use_dag_paths,
+            )
+            self._use_hybrid = True
+            self._use_v2 = False
+            self._use_nstf = False
+            print(f"✓ 检索器初始化: HybridRetriever (mode={mode})")
+        # 兼容旧的检索策略配置
+        elif self.config.retrieval_strategy == 'node_level':
             from .core.retriever_v2 import RetrieverV2
             self.retriever = RetrieverV2(
                 strategy='node_level',
@@ -199,12 +225,11 @@ class QARunner:
                 include_semantic=self.config.include_semantic,
                 preserve_clip_order=self.config.preserve_clip_order,
             )
+            self._use_hybrid = False
             self._use_v2 = True
             self._use_nstf = False
             print(f"✓ 检索器初始化: RetrieverV2 (node_level)")
-            print(f"  topk={self.config.node_topk}, threshold={self.config.node_threshold}")
         elif self.config.retrieval_strategy == 'nstf_level':
-            # 使用 NSTF 检索器（Procedure级别）
             from .core.retriever_nstf import NSTFRetriever
             self.retriever = NSTFRetriever(
                 threshold=self.config.nstf_threshold,
@@ -214,10 +239,10 @@ class QARunner:
                 threshold_baseline=self.config.threshold_baseline,
                 include_episodic_evidence=self.config.nstf_include_evidence,
             )
+            self._use_hybrid = False
             self._use_v2 = False
             self._use_nstf = True
             print(f"✓ 检索器初始化: NSTFRetriever (nstf_level)")
-            print(f"  threshold={self.config.nstf_threshold}, min_confidence={self.config.nstf_min_confidence}")
         else:
             # 使用原始检索器（clip 级别，baseline 兼容）
             self.retriever = Retriever(
@@ -226,6 +251,7 @@ class QARunner:
                 threshold_baseline=self.config.threshold_baseline,
                 topk=self.config.topk,
             )
+            self._use_hybrid = False
             self._use_v2 = False
             self._use_nstf = False
             print(f"✓ 检索器初始化: {self.retriever.mode_name}")
@@ -368,14 +394,18 @@ class QARunner:
     
     def _get_system_prompt(self, nstf_available: bool) -> str:
         """获取 system prompt"""
+        mode = getattr(self.config, 'mode', None)
         return get_system_prompt(
+            mode=mode,
             ablation_mode=self.config.ablation_mode,
             nstf_available=nstf_available
         )
     
     def _get_instruction(self, nstf_available: bool) -> str:
         """获取 instruction"""
+        mode = getattr(self.config, 'mode', None)
         return get_instruction(
+            mode=mode,
             ablation_mode=self.config.ablation_mode,
             nstf_available=nstf_available
         )
@@ -427,7 +457,42 @@ class QARunner:
             retrieval_info = None
             
             if content:
-                if self._use_v2:
+                if self._use_hybrid:
+                    # 使用新的 HybridRetriever
+                    result: RetrievalResult = self.retriever.search(
+                        mem_path=data['mem_path'],
+                        query=content,
+                        current_clips=data['current_clips'],
+                        nstf_path=data.get('nstf_path'),
+                        before_clip=data.get('before_clip'),
+                    )
+                    memories = result.memories
+                    data['current_clips'] = result.clips
+                    retrieval_info = result.metadata
+                    # 记录决策信息
+                    if retrieval_info:
+                        data['nstf_decision'] = retrieval_info.get('decision', 'unknown')
+                        data['query_type'] = retrieval_info.get('query_type')
+                        if 'matched_procedures' in retrieval_info:
+                            data['matched_procedures'] = retrieval_info['matched_procedures']
+                        
+                        # V2.4: 当 NSTF 匹配失败时，切换到 baseline prompt
+                        # 复杂的 NSTF prompt 会误导 LLM（解释 DAG 等无关概念）
+                        if retrieval_info.get('use_baseline_prompt') and not data.get('_prompt_switched'):
+                            baseline_prompt = get_system_prompt(
+                                mode='baseline',
+                                ablation_mode=None,
+                                nstf_available=False
+                            )
+                            data['conversations'][0]['content'] = baseline_prompt.format(question=data['question'])
+                            data['_instruction'] = get_instruction(
+                                mode='baseline',
+                                ablation_mode=None,
+                                nstf_available=False
+                            )
+                            data['_prompt_switched'] = True
+                            data['fallback_reason'] = retrieval_info.get('fallback_reason', 'unknown')
+                elif self._use_v2:
                     # 使用 V2 检索器（节点级别）
                     result = self.retriever.search(
                         mem_path=data['mem_path'],
@@ -470,8 +535,8 @@ class QARunner:
                         'num_results': len(memories),
                         'clips': self._extract_clip_info(memories, retrieval_info)
                     }
-                    # 添加NSTF特有的追踪信息
-                    if self._use_nstf and retrieval_info:
+                    # 添加追踪信息
+                    if (self._use_nstf or self._use_hybrid) and retrieval_info:
                         trace_entry['nstf_decision'] = retrieval_info.get('decision')
                         trace_entry['matched_procedures'] = retrieval_info.get('matched_procedures', [])
                     data['retrieval_trace'].append(trace_entry)

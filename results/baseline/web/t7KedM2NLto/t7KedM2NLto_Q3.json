@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "status": "success",
+  "error_message": null,
+  "id": "t7KedM2NLto_Q3",
+  "video_id": "t7KedM2NLto",
+  "dataset": "web",
+  "method": "baseline",
+  "question": "Are contestants on 'Celebrity Family Feud' allowed to discuss with their teammates before officially answering questions?",
+  "answer": "Yes.",
+  "type_original": [
+    "Multi-Detail Reasoning",
+    "General Knowledge Extraction"
+  ],
+  "type_query": "Factual",
+  "response": "Yes, contestants on 'Celebrity Family Feud' are allowed to discuss with their teammates before answering questions. The provided knowledge shows instances where teams like the Harvey Girls discuss among themselves during gameplay, and the game format involves collaborative decision-making to match survey responses.",
+  "gpt_eval": true,
+  "num_rounds": 2,
+  "elapsed_time_sec": 14.92,
+  "search_count": 1,
+  "retrieval_trace": [
+    {
+      "round": 1,
+      "query": "Are contestants allowed to discuss answers with their team on Celebrity Family Feud?",
+      "num_results": 2,
+      "clips": []
+    }
+  ],
+  "token_stats": {
+    "total_input_tokens": null,
+    "total_output_tokens": null
+  },
+  "nstf_available": false,
+  "nstf_path": null,
+  "mem_path": "/data1/rongjiej/NSTF_MODEL/data/memory_graphs/web/t7KedM2NLto.pkl",
+  "timestamp": "2026-02-03T04:01:11.343",
+  "llm_model": "qwen3-max",
+  "gpt_model": "gpt-4o",
+  "conversations": [
+    {
+      "role": "system",
+      "content": "You are given a question and some relevant knowledge. Your task is to reason about whether the provided knowledge is sufficient to answer the question. If it is sufficient, output [Answer] followed by the answer. If it is not sufficient, output [Search] and generate a query that will be encoded into embeddings for a vector similarity search. The query will help retrieve additional information from a memory bank.\n\nQuestion: Are contestants on 'Celebrity Family Feud' allowed to discuss with their teammates before officially answering questions?\n"
+    },
+    {
+      "role": "user",
+      "content": "Searched knowledge: {}"
+    },
+    {
+      "role": "assistant",
+      "content": "<think>\nOkay, let's see. The user is asking if contestants on 'Celebrity Family Feud' can discuss with their teammates before answering questions. I need to figure out if the provided knowledge answers this. The knowledge given is empty, so there's no info here. Since I don't have any data about the show's rules, I can't confirm the answer. I should generate a search query to find the answer. Maybe search for the rules of Celebrity Family Feud regarding team discussion. The query should be specific. Let me think of the best way to phrase it. Perhaps \"Are contestants allowed to discuss answers with their team on Celebrity Family Feud?\" That should retrieve the necessary information.\n</think>\n\nAction: [Search]\nContent: Are contestants allowed to discuss answers with their team on Celebrity Family Feud?"
+    },
+    {
+      "role": "user",
+      "content": "Searched knowledge: {\"CLIP_0\": [\"The video shows the introduction of contestants on Celebrity Family Feud.\", \"The audience cheers as the contestants are introduced.\", \"The set is lit with blue lights.\", \"<character_0> announces the start of Celebrity Family Feud.\", \"<character_0> introduces Marjorie Harvey and the Harvey boys, who are playing for Morehouse College.\", \"Marjorie Harvey wears a red dress.\", \"The Harvey boys wear suits.\", \"<character_0> is in the center of the Harvey girls.\", \"<character_0> wears a red dress.\", \"<character_0> and <character_0> wear red dresses as well.\", \"<character_0>, on the other hand, wears a dark dress.\", \"<character_0> introduces the Harvey girls who are playing for Spellman College.\", \"<character_0> introduces Steve Harvey as the host.\", \"Steve Harvey enters wearing a plaid suit and tie.\", \"<character_0> is named Doris.\", \"<character_0> is named Brandi.\", \"<character_0> is named Lori.\", \"<character_0> is named Karli.\", \"<character_0> is the host of the show.\", \"Marjorie Harvey and the Harvey boys are playing for Morehouse College.\", \"The Harvey girls are playing for Spellman College.\", \"The Harvey boys and Harvey girls are competing against each other on the show.\", \"<character_0> introduces the contestants and the charities they are playing for.\", \"The video shows the introduction of the contestants on a game show.\", \"The overall tone is energetic and exciting.\", \"The setting is a television game show studio.\", \"The video follows the typical game show format of introducing the host and contestants.\"], \"CLIP_28\": [\"<character_0> asks a question on Celebrity Family Feud.\", \"<character_0> is wearing a plaid suit with a dark tie.\", \"Marjorie answers 'Jail'.\", \"Marjorie is wearing a red dress.\", \"<character_0> confirms Marjorie's answer.\", \"The Harvey Boys team applauds.\", \"<character_0> repeats the question and answer.\", \"The scoreboard shows the Harvey Boys with 172 points and the Harvey Girls with 0 points.\", \"The top answer is 'A lie' with 37 points.\", \"The Harvey Girls team react with excitement.\", \"<character_0> reveals the next answer: 'A hotel' worth 3 points.\", \"<character_0> reveals the next answer: 'Mid-stare at babe' worth 10 points.\", \"The Harvey Girls discuss among themselves.\", \"<character_0> looks on.\", \"<character_0> speaks to the group.\", \"Marjorie is a contestant on the game show and a member of the Harvey Boys team.\", \"The Harvey Boys and Harvey Girls are competing against each other.\", \"The contestants exhibit excitement and anticipation during the game.\", \"The game involves answering survey questions to match the most popular responses.\", \"The video depicts a segment of a game show, likely Family Feud, based on the visual elements and gameplay.\", \"The game show setting encourages friendly competition and entertainment.\"]}"
+    },
+    {
+      "role": "assistant",
+      "content": "<think>\nOkay, let's see. The user is asking if contestants on 'Celebrity Family Feud' are allowed to discuss with their teammates before answering questions. The provided knowledge includes two clips. \n\nLooking at CLIP_28, there's a part where \"The Harvey Girls discuss among themselves.\" while the host is revealing answers. This suggests that during the game, teams do have moments where they discuss. Also, the game involves answering survey questions, which typically requires team discussion to guess the most popular answers.\n\nIn CLIP_0, the introduction mentions that the teams are competing against each other, which implies they work together. The fact that they have team scores (Harvey Boys with 172 points and Harvey Girls with 0) also points to team-based play where discussion would be necessary.\n\nSince the game is a version of Family Feud, which I know from general knowledge allows team discussion, the answer is likely yes. The provided clips support this by showing discussion and team interaction. Therefore, the knowledge is sufficient to answer the question.\n</think>\n\nAction: [Answer]\nContent: Yes, contestants on 'Celebrity Family Feud' are allowed to discuss with their teammates before answering questions. The provided knowledge shows instances where teams like the Harvey Girls discuss among themselves during gameplay, and the game format involves collaborative decision-making to match survey responses."
+    }
+  ]
+}

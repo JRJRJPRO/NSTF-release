@@ -44,8 +44,8 @@ class NSTFRetriever:
     
     def __init__(
         self,
-        threshold: float = 0.30,              # 降低后的阈值 (Stage 1验证)
-        min_confidence: float = 0.25,         # 最低置信度
+        threshold: float = 0.35,              # Procedure匹配阈值（多粒度加权后）
+        min_confidence: float = 0.30,         # 最低置信度（低于此值fallback）
         max_procedures: int = 3,              # 最大返回Procedure数
         topk_baseline: int = 10,              # Fallback时的baseline topk
         threshold_baseline: float = 0.3,      # Baseline阈值
@@ -201,7 +201,7 @@ class NSTFRetriever:
             memories['NSTF_Procedures'] = proc_info
             metadata['symbolic_function'] = 'get_procedure_with_evidence'
         
-        # 追溯episodic证据（所有模式都需要）
+        # 追溯episodic证据（从 NSTF Procedure 的 episodic_links）
         if self.include_episodic_evidence:
             evidence_clips = self._extract_episodic_evidence(
                 matched_procs[:self.max_procedures],
@@ -525,12 +525,18 @@ class NSTFRetriever:
     def _search_procedures(
         self, 
         query: str, 
-        proc_embeddings: Dict
+        proc_embeddings: Dict,
+        alpha: float = 0.3  # 论文默认值：平衡 goal 和 step 匹配
     ) -> List[Dict]:
         """
-        多粒度Procedure检索
+        多粒度Procedure检索 - 实现论文 Section 4.3.2
         
-        同时检索goal和steps embedding，取最高相似度
+        score(q, N) = α * sim(φ(q), i_goal) + (1-α) * sim(φ(q), i_step)
+        
+        Args:
+            query: 查询文本
+            proc_embeddings: Procedure embeddings 字典
+            alpha: goal-level 权重 (默认 0.3，即 step-level 权重为 0.7)
         """
         # 计算query embedding
         query_embs, _ = parallel_get_embedding("text-embedding-3-large", [query])
@@ -539,24 +545,32 @@ class NSTFRetriever:
         
         results = []
         for proc_id, emb_dict in proc_embeddings.items():
-            best_sim = -1
-            best_type = None
+            # 获取 goal 和 step embedding（注意：字段名是 step_emb 不是 steps_emb）
+            goal_vec = emb_dict.get('goal_emb')
+            step_vec = emb_dict.get('step_emb')  # 修正：step_emb 而非 steps_emb
             
-            # 检查goal和steps embedding
-            for emb_type in ['goal_emb', 'steps_emb']:
-                if emb_type in emb_dict:
-                    proc_vec = emb_dict[emb_type]
-                    sim = float(np.dot(query_vec, proc_vec))
-                    if sim > best_sim:
-                        best_sim = sim
-                        best_type = emb_type.replace('_emb', '')
+            # 如果缺少任一 embedding，尝试旧字段名兼容
+            if step_vec is None:
+                step_vec = emb_dict.get('steps_emb')  # 兼容旧版本
+            
+            if goal_vec is None or step_vec is None:
+                continue
+            
+            # 计算双粒度相似度
+            sim_goal = float(np.dot(query_vec, goal_vec))
+            sim_step = float(np.dot(query_vec, step_vec))
+            
+            # 论文公式：加权组合
+            combined_sim = alpha * sim_goal + (1 - alpha) * sim_step
             
             # 只保留超过threshold的
-            if best_sim >= self.threshold:
+            if combined_sim >= self.threshold:
                 results.append({
                     'proc_id': proc_id,
-                    'similarity': best_sim,
-                    'match_type': best_type,
+                    'similarity': combined_sim,
+                    'sim_goal': sim_goal,  # 保留分项分数用于调试
+                    'sim_step': sim_step,
+                    'match_type': 'combined',  # 标记为组合匹配
                 })
         
         # 按相似度降序排序
@@ -703,14 +717,14 @@ class NSTFRetriever:
                 texts.append(goal)
                 text_info.append((proc_id, 'goal'))
             
-            # Steps combined embedding
+            # Step-level embedding（注意：使用 step 而非 steps）
             steps = proc.get('steps', [])
             if steps:
                 actions = [s.get('action', '') for s in steps if isinstance(s, dict) and s.get('action')]
                 combined = '. '.join(actions)
                 if combined.strip():
                     texts.append(combined)
-                    text_info.append((proc_id, 'steps'))
+                    text_info.append((proc_id, 'step'))  # 修正：step 而非 steps
         
         if not texts:
             self._embedding_cache[nstf_path] = {}

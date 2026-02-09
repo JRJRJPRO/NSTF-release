@@ -182,9 +182,10 @@ class LLMClient:
                 enable_thinking=True
             )
             
-            # 检查长度
-            if len(input_ids) > 7800:
-                print(f"  ⚠️ 输入过长 ({len(input_ids)} tokens)，截断处理")
+            # 检查长度 - 留出生成空间（从 .env 读取 MAX_MODEL_LEN）
+            max_input_len = int(os.getenv('MAX_MODEL_LEN', '8192')) - self.max_tokens
+            if len(input_ids) > max_input_len:
+                print(f"  ⚠️ 输入过长 ({len(input_ids)} tokens)，截断处理 (限制: {max_input_len})")
                 return "[SKIPPED: Input too long]"
             
             outputs = self.model.generate(
@@ -224,6 +225,7 @@ class LLMClient:
         """本地批量生成"""
         prompts = []
         valid_indices = []
+        max_input_len = int(os.getenv('MAX_MODEL_LEN', '8192')) - self.max_tokens
         
         for i, messages in enumerate(batch_messages):
             input_ids = self.tokenizer.apply_chat_template(
@@ -232,7 +234,7 @@ class LLMClient:
                 add_generation_prompt=True,
                 enable_thinking=True
             )
-            if len(input_ids) <= 7800:
+            if len(input_ids) <= max_input_len:
                 prompts.append({"prompt_token_ids": input_ids})
                 valid_indices.append(i)
         

@@ -148,13 +148,23 @@ class DAGFusion:
         # Step 5: Merge Goal Embedding (EMA 方式)
         merged_embedding = self._merge_embeddings(proc1, proc2)
         
+        # Step 5b: Merge Step Embedding (NEW: 修复 step_emb 缺失问题)
+        merged_step_emb = self._merge_step_embeddings(proc1, proc2, merged_steps)
+        
         # Step 6: Merge Metadata
         merged_metadata = self._merge_metadata(proc1, proc2)
+        
+        # Step 7: Construct complete DAG structure (NEW: 修复 dag 结构缺失问题)
+        merged_dag = self._construct_dag_from_steps_and_edges(merged_steps, merged_edges)
+        
+        # Step 8: Get proc_type (NEW: 修复 proc_type 缺失问题)
+        merged_proc_type = proc1.get('proc_type') or proc2.get('proc_type') or 'task'
         
         # 构建融合后的 procedure
         fused_proc = {
             'proc_id': proc1.get('proc_id', 'fused_proc'),  # 保留第一个的 ID
             'type': 'procedure',
+            'proc_type': merged_proc_type,  # 添加 proc_type
             'goal': self._merge_goals(proc1.get('goal', ''), proc2.get('goal', '')),
             'description': self._merge_descriptions(
                 proc1.get('description', ''),
@@ -162,9 +172,11 @@ class DAGFusion:
             ),
             'steps': merged_steps,
             'edges': merged_edges,
+            'dag': merged_dag,  # 添加完整 DAG 结构
             'episodic_links': merged_links,
             'embeddings': {
-                'goal_emb': merged_embedding
+                'goal_emb': merged_embedding,
+                'step_emb': merged_step_emb,  # 添加 step_emb
             },
             'metadata': merged_metadata,
             # 融合统计
@@ -515,6 +527,87 @@ class DAGFusion:
         
         return merged
     
+    def _merge_step_embeddings(self, proc1: Dict, proc2: Dict, merged_steps: List[Dict]) -> np.ndarray:
+        """
+        合并 step embeddings
+        
+        优先使用已有的 step_emb，如果没有则从 merged_steps 重新计算
+        """
+        emb1 = proc1.get('embeddings', {}).get('step_emb')
+        emb2 = proc2.get('embeddings', {}).get('step_emb')
+        
+        # 如果两者都有，用 EMA 合并
+        if emb1 is not None and emb2 is not None:
+            if isinstance(emb1, list):
+                emb1 = np.array(emb1)
+            if isinstance(emb2, list):
+                emb2 = np.array(emb2)
+            merged = self.ema_alpha * emb2 + (1 - self.ema_alpha) * emb1
+            return merged / (np.linalg.norm(merged) + 1e-8)
+        
+        # 如果只有一个，返回那个
+        if emb1 is not None:
+            return np.array(emb1) if isinstance(emb1, list) else emb1
+        if emb2 is not None:
+            return np.array(emb2) if isinstance(emb2, list) else emb2
+        
+        # 都没有，从 merged_steps 计算
+        if merged_steps:
+            actions = [s.get('action', '') for s in merged_steps if isinstance(s, dict) and s.get('action')]
+            if actions:
+                embs = batch_get_normalized_embeddings(actions)
+                merged = np.mean(embs, axis=0)
+                return merged / (np.linalg.norm(merged) + 1e-8)
+        
+        # 最后 fallback
+        return np.zeros(3072)
+    
+    def _construct_dag_from_steps_and_edges(self, steps: List[Dict], edges: List[Dict]) -> Dict:
+        """
+        从 steps 和 edges 构建完整的 DAG 结构
+        
+        确保 DAG 包含:
+        - nodes: START, GOAL, 以及所有 step 节点
+        - edges: 带有 from, to, count, probability 的边列表
+        """
+        # 构建 nodes
+        nodes = {
+            'START': {'type': 'control', 'attributes': {}},
+            'GOAL': {'type': 'control', 'attributes': {}},
+        }
+        
+        for s in steps:
+            if isinstance(s, dict):
+                step_id = s.get('step_id', '')
+                if step_id:
+                    nodes[step_id] = {
+                        'type': 'action',
+                        'action': s.get('action', ''),
+                        'attributes': {
+                            'object': s.get('object', ''),
+                            'location': s.get('location', ''),
+                            'actor': s.get('actor', ''),
+                            'triggers': s.get('triggers', []),
+                            'outcomes': s.get('outcomes', []),
+                        }
+                    }
+        
+        # 转换 edges 格式
+        dag_edges = []
+        for e in edges:
+            # 处理不同的字段名称
+            from_step = e.get('from_step') or e.get('from', '')
+            to_step = e.get('to_step') or e.get('to', '')
+            
+            dag_edges.append({
+                'from': from_step,
+                'to': to_step,
+                'count': e.get('observation_count', e.get('count', 1)),
+                'probability': e.get('probability', 1.0),
+            })
+        
+        return {'nodes': nodes, 'edges': dag_edges}
+    
     def _merge_goals(self, goal1: str, goal2: str) -> str:
         """合并 goal 描述 (保留更长/更详细的)"""
         if not goal1:
@@ -570,8 +663,8 @@ class ProcedureFusionManager:
     
     def __init__(
         self,
-        similarity_threshold: float = 0.80,  # 判断是否融合的 goal 相似度阈值
-        step_align_threshold: float = 0.75,  # 步骤对齐的相似度阈值
+        similarity_threshold: float = 0.75,  # 从 0.80 降低到 0.75，增加融合概率
+        step_align_threshold: float = 0.70,  # 从 0.75 降低到 0.70，步骤对齐更宽松
         debug: bool = False,
     ):
         self.similarity_threshold = similarity_threshold

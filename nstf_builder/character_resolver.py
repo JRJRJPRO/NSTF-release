@@ -119,11 +119,11 @@ class CharacterResolver:
         for id_ in self.equivalences.keys():
             all_ids.add(id_)
         
-        # 从 episodic 内容中收集更多 ID
+        # 从 episodic 内容中收集所有 ID（不限制数量）
         id_pattern = re.compile(r'<(face|voice|character)_(\d+)>')
         
         if hasattr(self.video_graph, 'text_nodes_by_clip'):
-            for clip_id in list(self.video_graph.text_nodes_by_clip.keys())[:20]:
+            for clip_id in self.video_graph.text_nodes_by_clip.keys():
                 node_ids = self.video_graph.text_nodes_by_clip[clip_id]
                 for nid in node_ids:
                     node = self.video_graph.nodes.get(nid)

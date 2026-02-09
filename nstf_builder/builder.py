@@ -209,7 +209,19 @@ class NSTFBuilder:
         return all_contents
     
     def create_procedure_node(self, structure: Dict, proc_id: str) -> Dict:
-        """创建Procedure节点"""
+        """
+        创建 Procedure 节点（V2.3.1 完全符合论文规范）
+        
+        论文要求的双层 Index Vectors:
+        - goal_emb: φ(goal) - goal 文本的 embedding
+        - step_emb: Mean(φ(s) for s in steps) - 所有 step 的平均 embedding
+        
+        V2.3.1 新增:
+        - objects: 涉及的具体物品
+        - locations: 涉及的具体位置
+        - participants: 参与者
+        """
+        import numpy as np
         
         goal = structure.get('goal', proc_id)
         # 确保 goal 是字符串
@@ -221,46 +233,203 @@ class NSTFBuilder:
         if isinstance(description, dict):
             description = str(description)
         
-        steps = structure.get('steps', [])
+        raw_steps = structure.get('steps', [])
         
-        # 生成embedding - 安全处理 steps
+        # 规范化 steps 结构，确保包含 README 要求的所有字段
+        steps = []
+        for i, s in enumerate(raw_steps):
+            if isinstance(s, dict):
+                step = {
+                    'step_id': s.get('step_id', f'step_{i+1}'),
+                    'action': s.get('action', ''),
+                    'object': s.get('object', ''),
+                    'location': s.get('location', ''),
+                    'actor': s.get('actor', ''),
+                    'triggers': s.get('triggers', []),
+                    'outcomes': s.get('outcomes', []),
+                    'duration_seconds': s.get('duration_seconds', 0)
+                }
+                steps.append(step)
+            elif isinstance(s, str) and s:
+                steps.append({
+                    'step_id': f'step_{i+1}',
+                    'action': s,
+                    'object': '',
+                    'location': '',
+                    'actor': '',
+                    'triggers': [],
+                    'outcomes': [],
+                    'duration_seconds': 0
+                })
+        
+        # V2.3.1: 提取具体的物品、位置、参与者
+        objects = structure.get('objects', structure.get('key_objects', []))
+        locations = structure.get('locations', structure.get('key_locations', []))
+        participants = structure.get('participants', [])
+        
+        # 提取 step actions（包含 object 和 location）
         step_actions = []
         for s in steps:
             if isinstance(s, dict):
                 action = s.get('action', '')
-                if isinstance(action, str):
-                    step_actions.append(action)
-            elif isinstance(s, str):
+                if isinstance(action, str) and action:
+                    # 包含 object 和 location 以提高精度
+                    full_action = action
+                    if s.get('object'):
+                        full_action += f" with {s['object']}"
+                    if s.get('location'):
+                        full_action += f" at {s['location']}"
+                    step_actions.append(full_action)
+            elif isinstance(s, str) and s:
                 step_actions.append(s)
         
-        text_for_embedding = f"{goal}. {description}. Steps: " + ", ".join(step_actions)
+        # ========== 双层 Index Vectors (论文核心!) ==========
+        # 1. goal_emb: φ(goal) - 包含具体物品和位置
+        goal_text = f"{goal}. {description}" if description else goal
+        if objects:
+            goal_text += f" Objects: {', '.join(objects[:5])}"
+        if locations:
+            goal_text += f" Locations: {', '.join(locations[:5])}"
         
         try:
-            embedding, _ = self.embedding_api(self.embedding_model, text_for_embedding)
+            goal_embedding, _ = self.embedding_api(self.embedding_model, goal_text)
+            goal_emb = np.array(goal_embedding)
+            goal_emb = goal_emb / (np.linalg.norm(goal_emb) + 1e-8)
         except Exception as e:
-            print(f"    Embedding生成失败: {e}")
-            embedding = [0.0] * 3072
+            print(f"    Goal embedding 生成失败: {e}")
+            goal_emb = np.zeros(3072)
         
-        # 规范化 embedding 为 numpy array
-        import numpy as np
-        emb_array = np.array(embedding)
-        emb_normalized = emb_array / (np.linalg.norm(emb_array) + 1e-8)
+        # 2. step_emb: Mean(φ(s) for s in steps)
+        if step_actions:
+            try:
+                step_embeddings = batch_get_normalized_embeddings(step_actions)
+                step_emb = np.mean(step_embeddings, axis=0)
+                step_emb = step_emb / (np.linalg.norm(step_emb) + 1e-8)
+            except Exception as e:
+                print(f"    Step embeddings 生成失败: {e}")
+                step_emb = goal_emb.copy()  # fallback: 使用 goal_emb
+        else:
+            # 无 steps 时 fallback 到 goal_emb
+            step_emb = goal_emb.copy()
+        
+        # ========== 构建完整的 DAG 结构 ==========
+        dag = self._construct_dag(steps, structure.get('edges', []))
         
         return {
             'proc_id': proc_id,
             'type': 'procedure',
             'goal': goal,
             'description': description,
+            'proc_type': structure.get('proc_type', structure.get('type', 'task')),
             'steps': steps,
-            'edges': structure.get('edges', []),
+            'dag': dag,  # 完整的 DAG 结构（含 START/GOAL）
+            'edges': structure.get('edges', []),  # 保留兼容性
+            # V2.3.1: 新增具体信息字段
+            'objects': objects,
+            'locations': locations,
+            'participants': participants,
             'episodic_links': structure.get('episodic_links', []),
             'embeddings': {
-                'goal_emb': emb_normalized  # V2.2 格式：使用 goal_emb 字段
+                'goal_emb': goal_emb,   # 论文: i_goal = φ(c)
+                'step_emb': step_emb,   # 论文: i_step = Mean(φ(s))
             },
             'metadata': {
                 'created_at': datetime.now().isoformat(),
-                'source': 'nstf_extraction'
+                'updated_at': datetime.now().isoformat(),
+                'observation_count': 1,
+                'source_clips': structure.get('source_clips', []),
+                'source': 'nstf_extraction',
+                'version': '2.3.2'  # V2.3.2: 完整字段规范
             }
+        }
+    
+    def _construct_dag(self, steps: List, edges: List) -> Dict:
+        """
+        构建完整的 Procedural DAG (论文规范)
+        
+        论文要求: G = (V, E, A)
+        - V: 节点集合，包含 START 和 GOAL
+        - E: 有向边集合，带转移计数 N_ij
+        - A: 节点属性映射
+        """
+        # 1. 构建节点集合 V
+        nodes = {
+            'START': {'type': 'control', 'attributes': {}},
+            'GOAL': {'type': 'control', 'attributes': {}}
+        }
+        
+        for s in steps:
+            if isinstance(s, dict):
+                step_id = s.get('step_id', f"step_{len(nodes)-1}")
+                # 构建 attributes 包含所有额外信息
+                attributes = {
+                    'object': s.get('object', ''),
+                    'location': s.get('location', ''),
+                    'actor': s.get('actor', ''),
+                    'triggers': s.get('triggers', []),
+                    'outcomes': s.get('outcomes', []),
+                    'duration_seconds': s.get('duration_seconds', 0)
+                }
+                nodes[step_id] = {
+                    'type': 'action',
+                    'action': s.get('action', ''),
+                    'attributes': attributes
+                }
+            elif isinstance(s, str):
+                step_id = f"step_{len(nodes)-1}"
+                nodes[step_id] = {
+                    'type': 'action',
+                    'action': s,
+                    'attributes': {'object': '', 'location': '', 'actor': '', 'triggers': [], 'outcomes': [], 'duration_seconds': 0}
+                }
+        
+        # 2. 构建边集合 E（带转移计数）
+        dag_edges = []
+        step_ids = [sid for sid in nodes.keys() if sid not in ('START', 'GOAL')]
+        
+        if edges:
+            # 使用提供的边
+            for e in edges:
+                dag_edges.append({
+                    'from': e.get('from_step', e.get('from', '')),
+                    'to': e.get('to_step', e.get('to', '')),
+                    'count': e.get('count', 1),  # 初始计数为1
+                    'probability': e.get('probability', 1.0),
+                    'condition': e.get('condition', None)
+                })
+        elif step_ids:
+            # 自动构建线性序列 + START/GOAL
+            # START -> first_step
+            dag_edges.append({
+                'from': 'START',
+                'to': step_ids[0],
+                'count': 1,
+                'probability': 1.0,
+                'condition': None
+            })
+            
+            # step_i -> step_{i+1}
+            for i in range(len(step_ids) - 1):
+                dag_edges.append({
+                    'from': step_ids[i],
+                    'to': step_ids[i + 1],
+                    'count': 1,
+                    'probability': 1.0,
+                    'condition': None
+                })
+            
+            # last_step -> GOAL
+            dag_edges.append({
+                'from': step_ids[-1],
+                'to': 'GOAL',
+                'count': 1,
+                'probability': 1.0,
+                'condition': None
+            })
+        
+        return {
+            'nodes': nodes,
+            'edges': dag_edges
         }
     
     def build(

@@ -104,8 +104,8 @@ def main():
     output_dir = data_dir / 'nstf_graphs' / args.dataset
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # 检查已存在的图谱
-    suffix = '_nstf.pkl' if args.mode == 'static' else '_nstf_incremental.pkl'
+    # 检查已存在的图谱 - incremental 是默认模式，统一使用 _nstf.pkl
+    suffix = '_nstf.pkl'
     
     if args.force:
         to_process = videos

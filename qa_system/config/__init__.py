@@ -1,51 +1,84 @@
 # -*- coding: utf-8 -*-
 """
 配置模块
+
+支持三种运行模式:
+1. baseline: M3-Agent 原始检索
+2. nstf_full: 完整 NSTF 检索 + Logic Layer
+3. ablation_*: 消融实验变体
 """
 
 import os
 import json
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Literal
 
 CONFIG_DIR = Path(__file__).parent
+
+
+# ==================== 模式定义 ====================
+
+QAMode = Literal["baseline", "nstf_full", "ablation_prototype", "ablation_structure"]
+
+
+# ==================== 分离的检索配置 ====================
+
+@dataclass
+class BaselineConfig:
+    """Baseline 模式配置 (M3-Agent 原始)"""
+    threshold: float = 0.3              # 相似度阈值
+    topk: int = 10                      # 检索 Top-K
+    mem_wise: bool = False              # 是否全局检索
+
+
+@dataclass
+class NSTFConfig:
+    """NSTF 模式配置"""
+    # Procedure 匹配
+    threshold: float = 0.35             # Procedure 匹配阈值（多粒度加权后）
+    min_confidence: float = 0.30        # 最低置信度（低于此值触发 fallback）
+    max_procedures: int = 3             # 最大返回 Procedure 数
+    
+    # Fallback 配置
+    topk_baseline: int = 10             # Fallback 时的 baseline topk
+    threshold_baseline: float = 0.3     # Baseline 阈值
+    
+    # 功能开关
+    include_episodic_evidence: bool = True   # 是否返回 episodic 证据
+    use_reranking: bool = False              # Type-Aware Re-ranking（暂未实现）
+    use_dag_paths: bool = True               # 是否使用 DAG 多路径
 
 
 @dataclass
 class QAConfig:
     """问答系统配置"""
     
+    # === 运行模式 ===
+    # "baseline": M3-Agent 原始检索
+    # "nstf_full": 完整 NSTF 检索 + Logic Layer
+    # "ablation_prototype": 消融 - 无结构
+    # "ablation_structure": 消融 - 有结构无推理
+    mode: str = "baseline"
+    
     # === 检索配置 ===
-    topk: int = 2                       # 检索Top-K (与baseline一致)
+    topk: int = 10                      # 检索Top-K
     threshold: float = 0.05             # 相似度阈值（NSTF模式）
-    threshold_baseline: float = 0.3     # Baseline相似度阈值（分析后建议=0.3）
+    threshold_baseline: float = 0.3     # Baseline相似度阈值
     total_round: int = 5                # 最大对话轮数
     batch_size: int = 4                 # 批处理大小
     
-    # === 消融模式 ===
-    # None: 完整NSTF
-    # 'baseline': 消融A - 纯Baseline，不使用NSTF
-    # 'prototype': 消融B - 纯向量检索
-    # 'structure': 消融C - 有结构无推理
+    # === 废弃字段（保留兼容性）===
     ablation_mode: Optional[str] = None
+    retrieval_strategy: str = 'clip_level'
     
-    # === 检索策略配置 (V2) ===
-    retrieval_strategy: str = 'clip_level'  # 'clip_level', 'node_level', 或 'nstf_level'
-    
-    # 节点级别策略参数 (基于 parameter_tuning.py 分析结果)
-    node_topk: int = 20                     # 节点检索的 topk（分析推荐：15-20 平衡质量与召回）
-    node_threshold: float = 0.20            # 节点检索的阈值（分析推荐：0.20 保证 0% 空结果率）
-    include_timestamp: bool = True          # 是否返回时间戳
-    group_by_clip: bool = True              # 是否按 clip 分组（默认 True 保持兼容）
-    include_semantic: bool = False          # 是否包含 semantic 节点
-    preserve_clip_order: bool = True        # group 后是否恢复时间顺序
-    
-    # === NSTF级别策略参数 (基于 Stage 1/2 实验验证) ===
-    nstf_threshold: float = 0.30            # Procedure匹配阈值 (从0.40降低，提高命中率)
-    nstf_min_confidence: float = 0.25       # 最低置信度（低于此值触发fallback）
-    nstf_max_procedures: int = 3            # 最大返回Procedure数
-    nstf_include_evidence: bool = True      # 是否返回episodic证据
+    # === NSTF 专用配置 ===
+    nstf_threshold: float = 0.35
+    nstf_min_confidence: float = 0.30
+    nstf_max_procedures: int = 3
+    nstf_include_evidence: bool = True
+    nstf_use_reranking: bool = False
+    nstf_use_dag_paths: bool = True
     
     # === LLM配置 ===
     # 默认值从 .env 读取，.env 未设置时使用 "local"
@@ -91,12 +124,12 @@ class QAConfig:
     def to_dict(self) -> Dict[str, Any]:
         """转为字典"""
         return {
+            'mode': self.mode,
             'topk': self.topk,
             'threshold': self.threshold,
             'threshold_baseline': self.threshold_baseline,
             'total_round': self.total_round,
             'batch_size': self.batch_size,
-            'ablation_mode': self.ablation_mode,
             'llm_source': self.llm_source,
             'llm_model': self.llm_model,
             'temperature': self.temperature,
@@ -104,20 +137,34 @@ class QAConfig:
             'max_tokens': self.max_tokens,
             'gpt_model': self.gpt_model,
             'eval_timeout': self.eval_timeout,
-            # V2 检索策略配置
-            'retrieval_strategy': self.retrieval_strategy,
-            'node_topk': self.node_topk,
-            'node_threshold': self.node_threshold,
-            'include_timestamp': self.include_timestamp,
-            'group_by_clip': self.group_by_clip,
-            'include_semantic': self.include_semantic,
-            'preserve_clip_order': self.preserve_clip_order,
-            # NSTF级别策略配置
+            # NSTF 配置
             'nstf_threshold': self.nstf_threshold,
             'nstf_min_confidence': self.nstf_min_confidence,
             'nstf_max_procedures': self.nstf_max_procedures,
             'nstf_include_evidence': self.nstf_include_evidence,
+            'nstf_use_reranking': self.nstf_use_reranking,
+            'nstf_use_dag_paths': self.nstf_use_dag_paths,
         }
+    
+    def get_baseline_config(self) -> 'BaselineConfig':
+        """获取 Baseline 配置"""
+        return BaselineConfig(
+            threshold=self.threshold_baseline,
+            topk=self.topk,
+        )
+    
+    def get_nstf_config(self) -> 'NSTFConfig':
+        """获取 NSTF 配置"""
+        return NSTFConfig(
+            threshold=self.nstf_threshold,
+            min_confidence=self.nstf_min_confidence,
+            max_procedures=self.nstf_max_procedures,
+            topk_baseline=self.topk,
+            threshold_baseline=self.threshold_baseline,
+            include_episodic_evidence=self.nstf_include_evidence,
+            use_reranking=self.nstf_use_reranking,
+            use_dag_paths=self.nstf_use_dag_paths,
+        )
     
     def save(self, path: str):
         """保存配置到JSON"""
@@ -125,54 +172,56 @@ class QAConfig:
             json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
 
 
-# 预定义的消融实验配置
-ABLATION_CONFIGS = {
+# ==================== 预定义配置 ====================
+
+# 三种主要运行模式的配置
+MODE_CONFIGS = {
     'baseline': QAConfig(
-        ablation_mode='baseline',
-        retrieval_strategy='clip_level',  # baseline 使用 clip 级别检索
-        threshold=0.3,      # 分析后建议 threshold=0.3
-        threshold_baseline=0.3,  # baseline 模式使用 threshold=0.3
+        mode='baseline',
+        threshold_baseline=0.3,
+        topk=10,
     ),
-    'prototype': QAConfig(
-        ablation_mode='prototype',
-        retrieval_strategy='clip_level',
-        threshold=0.05,
-    ),
-    'structure': QAConfig(
-        ablation_mode='structure',
-        retrieval_strategy='clip_level',
-        threshold=0.05,
-    ),
-    'full_nstf': QAConfig(
-        ablation_mode=None,
-        retrieval_strategy='clip_level',
-        threshold=0.05,
-    ),
-    # 节点级别检索配置 (参数基于 parameter_tuning.py 分析结果)
-    'nstf_node': QAConfig(
-        ablation_mode=None,
-        retrieval_strategy='node_level',
-        node_topk=20,           # 分析推荐: 20 (平衡召回与质量)
-        node_threshold=0.20,    # 分析推荐: 0.20 (保证 0% 空结果率)
-        include_timestamp=True,
-        group_by_clip=True,
-        include_semantic=False,
-        preserve_clip_order=True,
-    ),
-    # NSTF级别检索配置 (基于 Stage 1/2 实验验证)
-    'nstf_level': QAConfig(
-        ablation_mode=None,
-        retrieval_strategy='nstf_level',
-        nstf_threshold=0.30,        # Stage 1验证: 降低阈值提高命中率
-        nstf_min_confidence=0.25,   # 极低置信度触发fallback
+    'nstf_full': QAConfig(
+        mode='nstf_full',
+        nstf_threshold=0.30,
+        nstf_min_confidence=0.25,
         nstf_max_procedures=3,
         nstf_include_evidence=True,
+        nstf_use_reranking=True,
+        nstf_use_dag_paths=True,
+    ),
+    'ablation_prototype': QAConfig(
+        mode='ablation_prototype',
+        threshold=0.05,
+    ),
+    'ablation_structure': QAConfig(
+        mode='ablation_structure',
+        threshold=0.05,
     ),
 }
 
 
+# 兼容旧版 ABLATION_CONFIGS
+ABLATION_CONFIGS = {
+    'baseline': MODE_CONFIGS['baseline'],
+    'prototype': MODE_CONFIGS['ablation_prototype'],
+    'structure': MODE_CONFIGS['ablation_structure'],
+    'full_nstf': MODE_CONFIGS['nstf_full'],
+}
+
+
+def get_mode_config(mode: str) -> QAConfig:
+    """获取指定模式的配置"""
+    if mode in MODE_CONFIGS:
+        return MODE_CONFIGS[mode]
+    # 兼容旧版 ablation_mode
+    if mode in ABLATION_CONFIGS:
+        return ABLATION_CONFIGS[mode]
+    raise ValueError(f"未知模式: {mode}. 可选: {list(MODE_CONFIGS.keys())}")
+
+
 def get_ablation_config(mode: str) -> QAConfig:
-    """获取指定消融模式的配置"""
+    """获取指定消融模式的配置（兼容旧版）"""
     if mode not in ABLATION_CONFIGS:
         raise ValueError(f"未知消融模式: {mode}. 可选: {list(ABLATION_CONFIGS.keys())}")
     return ABLATION_CONFIGS[mode]

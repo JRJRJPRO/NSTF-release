@@ -26,7 +26,7 @@ class ProcedureMatcher:
     
     def __init__(
         self,
-        match_threshold: float = 0.70,
+        match_threshold: float = 0.65,  # 从 0.70 降低到 0.65 以增加合并概率
         weights: Dict[str, float] = None,
         debug: bool = False
     ):

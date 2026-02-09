@@ -39,17 +39,31 @@ def load_prompt(subdir: str, name: str) -> str:
         return f.read()
 
 
-def get_prompt_mode(ablation_mode: Optional[str], nstf_available: bool = False) -> str:
-    """根据消融模式和 NSTF 可用性确定使用哪个 prompt 目录
+def get_prompt_mode(
+    mode: Optional[str] = None,
+    ablation_mode: Optional[str] = None, 
+    nstf_available: bool = False
+) -> str:
+    """根据运行模式和 NSTF 可用性确定使用哪个 prompt 目录
     
     Args:
-        ablation_mode: 消融模式 (None/baseline/prototype/structure)
+        mode: 新的运行模式 (baseline/nstf_full/ablation_*)
+        ablation_mode: 旧的消融模式 (兼容性参数)
         nstf_available: 当前问题是否有 NSTF 图谱可用
         
     Returns:
         prompt 目录名 (baseline 或 nstf)
     """
-    # 消融模式始终使用 baseline prompt
+    # 新 mode 参数优先
+    if mode:
+        if mode == 'nstf_full' and nstf_available:
+            return 'nstf'
+        elif mode.startswith('ablation_'):
+            return 'baseline'
+        elif mode == 'baseline':
+            return 'baseline'
+    
+    # 兼容旧的 ablation_mode 参数
     if ablation_mode in ['baseline', 'prototype', 'structure']:
         return 'baseline'
     
@@ -61,26 +75,36 @@ def get_prompt_mode(ablation_mode: Optional[str], nstf_available: bool = False) 
     return 'baseline'
 
 
-def get_system_prompt(ablation_mode: Optional[str] = None, nstf_available: bool = False) -> str:
+def get_system_prompt(
+    mode: Optional[str] = None,
+    ablation_mode: Optional[str] = None, 
+    nstf_available: bool = False
+) -> str:
     """获取 system prompt
     
     Args:
-        ablation_mode: 消融模式
+        mode: 新的运行模式
+        ablation_mode: 旧的消融模式 (兼容性参数)
         nstf_available: 是否有 NSTF 图谱可用
     """
-    mode = get_prompt_mode(ablation_mode, nstf_available)
-    return load_prompt(mode, 'system')
+    prompt_mode = get_prompt_mode(mode, ablation_mode, nstf_available)
+    return load_prompt(prompt_mode, 'system')
 
 
-def get_instruction(ablation_mode: Optional[str] = None, nstf_available: bool = False) -> str:
+def get_instruction(
+    mode: Optional[str] = None,
+    ablation_mode: Optional[str] = None, 
+    nstf_available: bool = False
+) -> str:
     """获取 instruction prompt
     
     Args:
-        ablation_mode: 消融模式
+        mode: 新的运行模式
+        ablation_mode: 旧的消融模式 (兼容性参数)
         nstf_available: 是否有 NSTF 图谱可用
     """
-    mode = get_prompt_mode(ablation_mode, nstf_available)
-    return load_prompt(mode, 'instruction')
+    prompt_mode = get_prompt_mode(mode, ablation_mode, nstf_available)
+    return load_prompt(prompt_mode, 'instruction')
 
 
 def get_evaluation_prompt() -> str:
