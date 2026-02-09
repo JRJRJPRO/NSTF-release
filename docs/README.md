@@ -1,33 +1,14 @@
-# Retrieval Threshold 分析文档索引
+# NSTF Documentation
 
-本目录包含关于 NSTF 系统中 **Retrieval Threshold (θ)** 参数的完整分析文档。
+This directory contains documentation for the NSTF system.
 
----
+## Key Concepts
 
-## 📚 文档列表
+- **Memory Graph**: Baseline video memory representation from M3-Agent
+- **NSTF Graph**: Enhanced graph with procedural knowledge, character profiles, and episodic links
+- **Retrieval Strategies**: Clip-level, node-level, and hybrid retrieval approaches
+- **Query Classification**: Rule-based classification into Factual, Procedural, Character, and Constraint types
 
-### 1. 执行总结 (推荐首先阅读)
-**文件**: [EXECUTIVE_SUMMARY.md](EXECUTIVE_SUMMARY.md)
-
-**内容**:
-- ✅ 核心结论和数据
-- ✅ 论文可用的关键数字
-- ✅ 快速问答
-
-**适合**: 快速了解分析结果，获取论文写作素材
-
----
-
-### 2. 完整分析报告
-**文件**: [RETRIEVAL_THRESHOLD_ANALYSIS_REPORT.md](RETRIEVAL_THRESHOLD_ANALYSIS_REPORT.md)
-
-**内容**:
-- 📖 论文中的定义和理论背景
-- 💻 代码实现细节
-- 📊 详细实验数据和分析
-- 📈 Embedding分布特征
-- 💡 优化建议和未来方向
-- 📝 论文写作具体文本
 
 **适合**: 深入理解threshold的作用，准备论文章节
 

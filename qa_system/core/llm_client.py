@@ -15,7 +15,7 @@ from pathlib import Path
 from env_setup import NSTF_MODEL_DIR
 
 from dotenv import load_dotenv
-load_dotenv(NSTF_MODEL_DIR / '.env')
+load_dotenv(NSTF_MODEL_DIR / '.env', override=False)
 
 
 def setup_gpu_for_local_llm():

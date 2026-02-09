@@ -173,7 +173,5 @@ class QueryClassifier:
         query: str,
         rule_result: ClassificationResult
     ) -> ClassificationResult:
-        """LLM 精细分类 - 预留接口"""
-        # TODO: 实现 LLM 分类
-        # 当前版本直接返回规则结果
+        """LLM-based refinement (reserved interface)"""
         return rule_result

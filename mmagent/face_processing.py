@@ -22,9 +22,8 @@ from mmagent.src.face_extraction import extract_faces
 from mmagent.src.face_clustering import cluster_faces
 from mmagent.utils.video_processing import process_video_clip
 
-# 从环境变量获取 InsightFace 路径
-INSIGHTFACE_HOME = os.environ.get("INSIGHTFACE_HOME", "/data1/rongjiej/BytedanceM3Agent/models/insightface")
-# 确保目录存在
+# InsightFace model directory (configure via INSIGHTFACE_HOME env variable)
+INSIGHTFACE_HOME = os.environ.get("INSIGHTFACE_HOME", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "insightface"))
 os.makedirs(INSIGHTFACE_HOME, exist_ok=True)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
