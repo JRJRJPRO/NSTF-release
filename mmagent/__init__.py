@@ -15,27 +15,24 @@ import logging
 import json
 import os
 
-# Load processing config
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 config_path = os.path.join(BASE_DIR, "configs", "processing_config.json")
 processing_config = json.load(open(config_path))
 logging_level = processing_config["logging"]
 model = processing_config["model"]
 
-# Configure root logger
 if processing_config.get("train", False):
-    logging.basicConfig(level=logging.CRITICAL)  # Disable all logs in training mode
+    logging.basicConfig(level=logging.CRITICAL)
 else:
     logging.basicConfig(
         level=logging.DEBUG if logging_level == "DETAIL" else logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.StreamHandler(),  # Console handler
-            logging.FileHandler(os.path.join(processing_config["log_dir"], "mmagent.log"))  # File handler
+            logging.StreamHandler(),
+            logging.FileHandler(os.path.join(processing_config["log_dir"], "mmagent.log"))
         ]
     )
 
-# Disable third-party library logging
 logging.getLogger('moviepy').setLevel(logging.ERROR)
 logging.getLogger('moviepy.video.io.VideoFileClip').setLevel(logging.ERROR)
 logging.getLogger('moviepy.audio.io.AudioFileClip').setLevel(logging.ERROR)

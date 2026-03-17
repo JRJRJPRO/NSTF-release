@@ -961,8 +961,8 @@ Return a valid JSON list where each item contains:
 Example Input:
 
 [
-	{{"question": "what's the man doing?", "answer": "he fixing the car.", "reasoning": "需要从视频中找到男人正在修理汽车的场景。"}},
-	{{"question": "why she looks angry?", "answer": "because someone take her bag.", "reasoning": "需要从视频中找到女人生气的原因。"}}
+	{{"question": "what's the man doing?", "answer": "he fixing the car.", "reasoning": "Find the scene where the man is repairing the car."}},
+	{{"question": "why she looks angry?", "answer": "because someone take her bag.", "reasoning": "Find the scene explaining why the woman looks angry."}}
 ]
 
 Expected Output:

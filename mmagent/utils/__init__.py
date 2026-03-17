@@ -14,7 +14,6 @@
 import json
 import os
 
-# 使用绝对路径加载配置
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 config_path = os.path.join(BASE_DIR, "configs", "processing_config.json")
 processing_config = json.load(open(config_path))

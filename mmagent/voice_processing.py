@@ -34,20 +34,17 @@ processing_config = json.load(open(config_path))
 
 MAX_RETRIES = processing_config["max_retries"]
 
-# 配置日志
 logger = logging.getLogger(__name__)
 
-# 固定使用 GPU 0（或从环境变量获取）
 gpu_devices = os.environ.get('GPU_DEVICES', '0')
 try:
     first_gpu = int(gpu_devices.split(',')[0].strip())
     device = torch.device(f'cuda:{first_gpu}')
-    logger.info(f"Voice processing 使用 GPU {first_gpu}")
+    logger.info(f"Voice processing using GPU {first_gpu}")
 except (ValueError, IndexError):
     device = torch.device('cuda:0')
-    logger.info("Voice processing 使用默认 GPU 0")
+    logger.info("Voice processing using default GPU 0")
 
-# 获取BytedanceM3Agent根目录（mmagent的父目录）
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 model_path = os.path.join(BASE_DIR, "models", "pretrained_eres2netv2.ckpt")
 pretrained_state = torch.load(model_path, map_location='cpu')
@@ -61,7 +58,6 @@ model = {
 embedding_model = dynamic_import(model['obj'])(**model['args'])
 embedding_model.load_state_dict(pretrained_state)
 
-# 使用异常处理，如果GPU不可用则使用CPU
 try:
     embedding_model.to(device)
     logger.info(f"Voice embedding model loaded on {device}")
@@ -176,7 +172,7 @@ def process_voices(video_graph, base64_audio, base64_video, save_path, preproces
         asrs = None
         for i in range(MAX_RETRIES):
             # response, _ = get_response_with_retry(model, messages, timeout=30)
-            response, _ = get_response(model, messages, timeout=120)  # 增加超时时间到120秒
+            response, _ = get_response(model, messages, timeout=120)
             asrs = validate_and_fix_json(response)
             if asrs is not None:
                 break
@@ -193,15 +189,7 @@ def process_voices(video_graph, base64_audio, base64_video, save_path, preproces
         return asrs
 
     def get_normed_audio_embeddings(audios):
-        """
-        Get normalized audio embeddings for a list of base64 audio strings
-        
-        Args:
-            base64_audios (list): List of base64 encoded audio strings
-            
-        Returns:
-            list: List of normalized audio embeddings
-        """
+        """Get normalized audio embeddings for a list of audio segments."""
         audio_segments = [audio["audio_segment"] for audio in audios]
         embeddings = get_audio_embeddings(audio_segments)
         normed_embeddings = [normalize_embedding(embedding) for embedding in embeddings]
@@ -278,11 +266,9 @@ def process_voices(video_graph, base64_audio, base64_video, save_path, preproces
     if len(audios) == 0:
         return {}
 
-    # 如果video_graph为None，则直接返回聚类结果，不更新video_graph
     if video_graph is None:
-        logger.info(f"🔍 [process_voices] video_graph=None，跳过video_graph更新，直接返回聚类结果")
-        
-        # 构建简化的id2audios：使用matched_node作为key
+        logger.info("[process_voices] video_graph=None, skipping graph update, returning clustering results")
+
         id2audios = {}
         for audio in audios:
             matched_node = audio.get('matched_node', f"speaker_{len(id2audios)}")
@@ -290,10 +276,9 @@ def process_voices(video_graph, base64_audio, base64_video, save_path, preproces
                 id2audios[matched_node] = []
             id2audios[matched_node].append(audio)
         
-        logger.info(f"✅ [process_voices] 返回 {len(id2audios)} 个说话人")
+        logger.info(f"[process_voices] Returning {len(id2audios)} speakers")
         return id2audios
     
-    # 正常模式：更新video_graph
     id2audios = update_videograph(video_graph, audios)
 
     return id2audios

@@ -21,45 +21,31 @@ import numpy as np
 from moviepy.editor import VideoFileClip
 import subprocess
 
-# Disable moviepy logging
 logging.getLogger('moviepy').setLevel(logging.ERROR)
-# Disable moviepy's tqdm progress bar
 logging.getLogger('moviepy.video.io.VideoFileClip').setLevel(logging.ERROR)
 logging.getLogger('moviepy.audio.io.AudioFileClip').setLevel(logging.ERROR)
 
-# Configure logging
 logger = logging.getLogger(__name__)
 
 def get_video_info(file_path):
-    """Get video/audio information using appropriate libraries.
-    
-    Args:
-        file_path (str): Path to video or audio file
-        
-    Returns:
-        dict: Dictionary containing media metadata
-    """
+    """Get video metadata such as fps, duration, and resolution."""
     file_info = {}
     file_info["path"] = file_path
     file_info["name"] = file_path.split("/")[-1]
     file_info["format"] = os.path.splitext(file_path)[1][1:].lower()
-        
-    # Handle video files using moviepy
-    
-    video = VideoFileClip(file_path)  # Disable logging for this instance
-    
-    # Get basic properties from moviepy
+
+    video = VideoFileClip(file_path)
+
     file_info["fps"] = video.fps
     file_info["frames"] = int(video.fps * video.duration)
     file_info["duration"] = video.duration
     file_info["width"] = video.size[0]
     file_info["height"] = video.size[1]
-    
+
     video.close()
     return file_info
 
 def extract_frames(video, start_time=None, interval=None, sample_fps=10):
-    # if start_time and interval are not provided, sample the whole video at sample_fps
     if start_time is None and interval is None:
         start_time = 0
         interval = video.duration
@@ -67,24 +53,22 @@ def extract_frames(video, start_time=None, interval=None, sample_fps=10):
     frames = []
     frame_interval = 1.0 / sample_fps
 
-    # Extract frames at specified intervals
     for t in np.arange(
         start_time, min(start_time + interval, video.duration), frame_interval
     ):
         frame = video.get_frame(t)
-        # Convert frame to jpg and base64
         _, buffer = cv2.imencode(".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
         frames.append(base64.b64encode(buffer).decode("utf-8"))
-        
+
     return frames
 
-def process_video_clip(video_path, fps=5, audio_fps=16000): 
-    try: 
+def process_video_clip(video_path, fps=5, audio_fps=16000):
+    try:
         base64_data = {}
         video = VideoFileClip(video_path)
         base64_data["video"] = base64.b64encode(open(video_path, "rb").read())
         base64_data["frames"] = extract_frames(video, sample_fps=fps)
-        
+
         if video.audio is None:
             base64_data["audio"] = None
         else:
@@ -92,7 +76,7 @@ def process_video_clip(video_path, fps=5, audio_fps=16000):
                 video.audio.write_audiofile(audio_tempfile.name, codec="pcm_s16le", fps=audio_fps)
                 audio_tempfile.seek(0)
                 base64_data["audio"] = base64.b64encode(audio_tempfile.read())
-        
+
         video.close()
         return base64_data["video"], base64_data["frames"], base64_data["audio"]
 
@@ -101,16 +85,7 @@ def process_video_clip(video_path, fps=5, audio_fps=16000):
         raise
 
 def verify_video_processing(video_path, output_dir, interval, strict=False):
-    """Verify that a video was properly split into clips by checking the number of clips.
-    
-    Args:
-        video_path (str): Path to original video file
-        output_dir (str): Directory containing the split clips
-        interval (float): Interval length in seconds used for splitting
-        
-    Returns:
-        bool: True if verification passes, False otherwise
-    """
+    """Verify that a video was properly split into the expected number of clips."""
 
     def has_video_and_audio(file_path):
         def has_stream(stream_type):
@@ -169,22 +144,20 @@ def verify_video_processing(video_path, output_dir, interval, strict=False):
                 f.write(f"Error processing {video_path}: Video file not found.\n")
             logger.error(f"Error processing {video_path}: Video file not found.")
             return False
-        # Get expected number of clips based on video duration
         video_info = get_video_info(video_path)
         expected_clips_num = math.ceil(int(video_info["duration"]) / interval)
-        
-        # Get actual number of clips in output directory
+
         clip_dir = output_dir
-        
+
         if not os.path.exists(clip_dir):
             with open("logs/video_processing_failed.log", "a") as f:
                 f.write(f"Error processing {video_path}: Clip directory {clip_dir} not found.\n")
             logger.error(f"Error processing {video_path}: Clip directory {clip_dir} not found.")
             return False
-            
+
         actual_clips = [f for f in os.listdir(clip_dir) if os.path.isfile(os.path.join(clip_dir, f)) and f.split('.')[-1] in ['mp4', 'mov', 'webm']]
         actual_clips_num = len(actual_clips)
-        
+
         if actual_clips_num != expected_clips_num:
             with open("logs/video_processing_failed.log", "a") as f:
                 f.write(f"Error processing {video_path}: Expected {video_info['duration']}/{interval}={expected_clips_num} clips, but found {actual_clips_num} clips.\n")
@@ -207,7 +180,7 @@ def verify_video_processing(video_path, output_dir, interval, strict=False):
                     return False
 
         return True
-        
+
     except Exception as e:
         with open("logs/video_processing_failed.log", "a") as f:
             f.write(f"Error verifying {video_path}: {e}\n")

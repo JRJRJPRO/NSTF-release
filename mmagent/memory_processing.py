@@ -32,13 +32,10 @@ processing_config = json.load(open(config_path))
 logging_level = processing_config["logging"]
 
 MAX_RETRIES = processing_config["max_retries"]
-# Configure logging
 logger = logging.getLogger(__name__)
-    
+
 
 def parse_video_caption(video_graph, video_caption):
-        # video_caption is a string like this: <char_1> xxx <char_2> xxx
-        # extract all the elements wrapped by < and >
     def verify_entity(video_graph, entity_str):
         try:
             node_type, node_id = entity_str.split("_")
@@ -69,7 +66,6 @@ def generate_video_context(
     face_frames = []
     face_only = []
 
-    # Iterate through faces directly
     for char_id, faces in faces_list.items():
         if len(faces) == 0:
             continue
@@ -77,18 +73,15 @@ def generate_video_context(
         frame_id = face["frame_id"]
         frame_base64 = base64_frames[frame_id]
 
-        # Convert base64 to PIL Image
         frame_bytes = base64.b64decode(frame_base64)
         frame_img = Image.open(BytesIO(frame_bytes))
         draw = ImageDraw.Draw(frame_img)
 
-        # Draw current face
         bbox = face["bounding_box"]
         draw.rectangle(
             [(bbox[0], bbox[1]), (bbox[2], bbox[3])], outline=(0, 255, 0), width=4
         )
 
-        # Convert back to base64
         buffered = BytesIO()
         frame_img.save(buffered, format="JPEG")
         frame_base64 = base64.b64encode(buffered.getvalue()).decode()
@@ -106,15 +99,13 @@ def generate_video_context(
     if num_faces == 0:
         logger.warning("No qualified faces detected")
     
-    # Visualize face frames with IDs
     if logging_level == "DETAIL" and num_faces > 0:
-        num_rows = (num_faces + 2) // 3  # Round up division to get number of rows needed
+        num_rows = (num_faces + 2) // 3
 
         _, axes = plt.subplots(num_rows, 3, figsize=(15, 5 * num_rows))
         axes = axes.ravel()  # Flatten axes array for easier indexing
 
         for i, face_pic in enumerate(faces_input):
-            # Convert base64 to image array
             img_bytes = base64.b64decode(face_pic[1])
             img_array = np.array(Image.open(BytesIO(img_bytes)))
 
@@ -122,7 +113,6 @@ def generate_video_context(
             axes[i].set_title(face_pic[0])
             axes[i].axis("off")
 
-        # Hide empty subplots
         for j in range(i + 1, len(axes)):
             axes[j].axis("off")
 
@@ -204,25 +194,20 @@ def generate_full_memories(video_context):
 
 def process_memories(video_graph, memory_contents, clip_id, type='episodic'):
     def get_memory_embeddings(memory_contents):
-        # calculate the embedding for each memory
         model = 'text-embedding'
         embeddings = parallel_get_embedding(model, memory_contents)[0]
         return embeddings
 
     def insert_memory(video_graph, memory, type='episodic'):
-        # create a new text node for each memory
         new_node_id = video_graph.add_text_node(memory, clip_id, type)
         entities = parse_video_caption(video_graph, memory['contents'][0])
         for entity in entities:
             video_graph.add_edge(new_node_id, entity[1])
 
     def update_video_graph(video_graph, memories, type='episodic'):
-        # append all episodic memories to the graph
         if type == 'episodic':
-            # create a new text node for each memory
             for memory in memories:
                 insert_memory(video_graph, memory, type)
-        # semantic memories can be used to update the existing text nodes, or create new text nodes
         elif type == 'semantic':
             for memory in memories:
                 entities = parse_video_caption(video_graph, memory['contents'][0])
@@ -231,25 +216,15 @@ def process_memories(video_graph, memory_contents, clip_id, type='episodic'):
                     insert_memory(video_graph, memory, type)
                     continue
                 
-                # update the existing text node for each memory, if needed
                 positive_threshold = 0.85
                 negative_threshold = 0
-                
-                # get all (possible) related nodes            
+
                 node_id = entities[0][1]
                 related_nodes = video_graph.get_connected_nodes(node_id, type=['semantic'])
-                
-                # if there is a node with similarity > positive_threshold, then update the edge weight by +1
-                # if there is a node with similarity < negative_threshold, then update the edge weight by -1, and add a new text node and connect it to the existing node
-                # otherwise, add a new text node and connect it to the existing node
+
                 create_new_node = True
-                
+
                 for node_id in related_nodes:
-                    # related nodes to be updated should satisfy two condtions:
-                    # 1. the caption entities are a subset of the existing node entities
-                    # 2. the semantic similarity between the memory and the existing node shows a positive correlation or a negative correlation
-                    
-                    # see if the memory entities are a subset of the existing node entities
                     related_node_entities = parse_video_caption(video_graph, video_graph.nodes[node_id].metadata['contents'][0])
                     embedding = video_graph.nodes[node_id].embeddings[0]
                     if all(entity in related_node_entities for entity in entities):

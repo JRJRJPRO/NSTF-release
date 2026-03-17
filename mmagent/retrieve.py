@@ -153,20 +153,17 @@ def get_related_nodes(video_graph, query):
     return list(set(related_nodes))
 
 def generate_action(question, knowledge, retrieval_plan=None, multiple_queries=False, responses=[], switch=False, model="gpt-4o-2024-11-20"):
-    # select prompt
     if not switch:
         if multiple_queries:
             prompt = prompt_generate_action_with_plan_multiple_queries
         else:
             prompt = prompt_generate_action_with_plan
-            # prompt = prompt_generate_action_with_plan_multiple_queries
     else:
         logger.info(f"Route switch triggered.")
         if multiple_queries:
             prompt = prompt_generate_action_with_plan_multiple_queries_new_direction
         else:
             prompt = prompt_generate_action_with_plan_new_direction
-            # prompt = prompt_generate_action_with_plan_multiple_queries_new_direction
     
     input = [
         {
@@ -313,7 +310,6 @@ def answer_with_retrieval(video_graph, question, video_clip_base64=None, topk=5,
         
     switch = False
     for i in range(max_retrieval_steps):
-        # reasoning, action_type, action_content = generate_action(question, context, retrieval_plan)
         reasoning, action_type, action_content = generate_action(question, context, retrieval_plan, multiple_queries=multiple_queries, responses=responses, switch=switch, model=model)
         reasoning = reasoning.strip("### Reasoning:").strip("### Answer or Search:").strip("Reasoning:").strip()
         if action_type == "answer":
@@ -429,20 +425,3 @@ def retrieve_all_semantic_memories(video_graph):
     return semantic_memories
 
 
-if __name__ == "__main__":
-    from utils.general import load_video_graph
-    import base64
-    processing_config["logging"] = "DETAIL"
-    processing_config["topk"] = 30
-
-    def video_to_base64(video_path):
-        with open(video_path, 'rb') as video_file:
-            video_bytes = video_file.read()
-            base64_encoded = base64.b64encode(video_bytes).decode('utf-8')
-            return base64_encoded
-
-    video_graph_path = "/mnt/hdfs/foundation/longlin.kylin/mmagent/data/mems/CZ_1/Efk3K4epEzg_30_5_-1_10_20_0.3_0.6.pkl"
-    video_graph = load_video_graph(video_graph_path)
-
-    question = "Which collection has the highest starting price?"
-    answer = answer_with_retrieval(video_graph, question, video_to_base64("/mnt/hdfs/foundation/longlin.kylin/mmagent/data/video_clips/CZ_1/Efk3K4epEzg/39.mp4"), topk=processing_config["topk"], multiple_queries=processing_config["multiple_queries"], max_retrieval_steps=processing_config["max_retrieval_steps"])

@@ -33,20 +33,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 config_path = os.path.join(BASE_DIR, "configs", "processing_config.json")
 processing_config = json.load(open(config_path))
 MAX_RETRIES = processing_config["max_retries"]
-# Configure logging
 logger = logging.getLogger(__name__)
 
 class VideoGraph:
-    """
-    This class defines the VideoGraph class, which is used to represent the video graph.
-    """
+    """Represents a video graph with nodes for faces, voices, and text events."""
     def __init__(self, max_img_embeddings=10, max_audio_embeddings=20, img_matching_threshold=0.3, audio_matching_threshold=0.6):
-        """Initialize a video graph with nodes for faces, voices and text events.
-        
-        Args:
-            max_img_embeddings: Maximum number of image embeddings per face node
-            max_audio_embeddings: Maximum number of audio embeddings per voice node
-        """
+        """Initialize a video graph with configurable embedding limits and matching thresholds."""
         self.nodes = {}  # node_id -> node object
         self.edges = {}  # (node_id1, node_id2) -> edge weight
         # Maintain ordered text nodes
@@ -119,11 +111,7 @@ class VideoGraph:
     # Modification functions
     
     def add_img_node(self, imgs):
-        """Add a new face node with initial image embedding(s).
-        
-        Args:
-            img_embedding: Single embedding or list of embeddings
-        """
+        """Add a new face node with initial image embeddings."""
         node = self.Node(self.next_node_id, 'img')
         
         img_embeddings = imgs['embeddings']
@@ -139,11 +127,7 @@ class VideoGraph:
         return node.id
 
     def add_voice_node(self, audios):
-        """Add a new voice node with initial audio embedding(s).
-        
-        Args:
-            audio_embedding: Single embedding or list of embeddings
-        """
+        """Add a new voice node with initial audio embeddings."""
         node = self.Node(self.next_node_id, 'voice')
         
         audio_embeddings = audios['embeddings']
@@ -159,12 +143,7 @@ class VideoGraph:
         return node.id
 
     def add_text_node(self, text, clip_id, text_type='episodic'):
-        """Add a new text node with episodic or semantic content.
-        
-        Args:
-            text: Text content
-            text_type: Type of text node ('episodic' or 'semantic')
-        """
+        """Add a new text node with episodic or semantic content."""
         if text_type not in ['episodic', 'semantic']:
             raise ValueError("text_type must be either 'episodic' or 'semantic'")
 
@@ -190,20 +169,7 @@ class VideoGraph:
         return node.id
     
     def add_procedure_node(self, procedure_info, clip_id):
-        """Add a new procedure node representing a sequence of actions/steps.
-        
-        Args:
-            procedure_info: Dictionary containing:
-                - embeddings: List of embeddings for the procedure
-                - contents: List of procedure descriptions/steps
-                - steps: (optional) List of individual steps in the procedure
-                - preconditions: (optional) List of preconditions
-                - postconditions: (optional) List of postconditions/effects
-            clip_id: The clip ID where this procedure was observed
-            
-        Returns:
-            node_id: ID of the created procedure node
-        """
+        """Add a new procedure node representing a sequence of actions or steps."""
         node = self.Node(self.next_node_id, 'procedure')
         node.embeddings = procedure_info['embeddings']
         node.metadata['contents'] = procedure_info['contents']
@@ -235,15 +201,7 @@ class VideoGraph:
         return node.id
 
     def update_node(self, node_id, update_info):
-        """Update an existing node.
-        
-        Args:
-            node_id: ID of target node
-            update_info: Dictionary of update information
-            
-        Returns:
-            Boolean indicating success
-        """
+        """Update an existing node with new content and embeddings."""
         if node_id not in self.nodes:
             raise ValueError(f"Node {node_id} not found")
 
@@ -274,8 +232,7 @@ class VideoGraph:
         return True
 
     def add_edge(self, node_id1, node_id2, weight=1.0):
-        """Add or update bidirectional weighted edges between two nodes.
-        Text-to-text connections are not allowed between same type text nodes."""
+        """Add or update bidirectional weighted edges between two nodes."""
         if (node_id1 in self.nodes and node_id2 in self.nodes and not (self.nodes[node_id1].type == self.nodes[node_id2].type and self.nodes[node_id1].type in ['episodic', 'semantic'])):
             # Add both directions with same weight
             self.edges[(node_id1, node_id2)] = weight
@@ -299,15 +256,7 @@ class VideoGraph:
         return False
 
     def reinforce_node(self, node_id, delta_weight=1):
-        """Reinforce all edges connected to the given node.
-        
-        Args:
-            node_id: ID of the node to reinforce
-            delta_weight: Amount to increase edge weights by (default: 1)
-            
-        Returns:
-            int: Number of edges reinforced
-        """
+        """Reinforce all edges connected to the given node."""
         if node_id not in self.nodes:
             return 0
             
@@ -322,15 +271,7 @@ class VideoGraph:
         return reinforced_count
 
     def weaken_node(self, node_id, delta_weight=1):
-        """Weaken all edges connected to the given node.
-        
-        Args:
-            node_id: ID of the node to weaken
-            delta_weight: Amount to decrease edge weights by (default: 1)
-            
-        Returns:
-            int: Number of edges weakened
-        """
+        """Weaken all edges connected to the given node."""
         if node_id not in self.nodes:
             return 0
             
@@ -561,9 +502,7 @@ class VideoGraph:
         logger.info(f"Found {character_count} characters")
                 
     def order_character(self):
-        """
-        ablation study, without equivalence
-        """
+        """Assign each face/voice node its own character without equivalence merging."""
         character_mappings = {}
         reverse_character_mappings = {}
         character_count = 0
@@ -600,17 +539,7 @@ class VideoGraph:
         return list(set(connected))
 
     def search_text_nodes(self, query_embeddings, range_nodes=[], mode="max", include_procedures=True):
-        """Search for text nodes using text embeddings.
-        
-        Args:
-            query_embeddings: Query embeddings
-            range_nodes: Optional list of nodes to restrict search to
-            mode: Similarity calculation mode ('mean', 'sum', 'max', 'min')
-            include_procedures: Whether to include procedure nodes in search (default: True)
-            
-        Returns:
-            List of (node_id, similarity_score) tuples sorted by score
-        """
+        """Search for text nodes by cosine similarity with query embeddings."""
         # Get target nodes
         if range_nodes:
             text_nodes = []
@@ -623,118 +552,83 @@ class VideoGraph:
         else:
             text_nodes = self.text_nodes
         target_nodes = [(node_id, self.nodes[node_id].embeddings) for node_id in text_nodes]
-        
-        # Calculate similarities in parallel using numpy
+
         node_ids, node_embeddings = zip(*target_nodes) if target_nodes else ([], [])
         if not node_ids:
             return []
-        
-        # 将 query_embeddings 转换为 numpy
+
         query_embeddings = np.array(query_embeddings)
         n_queries = query_embeddings.shape[0]
         query_embedding_dim = query_embeddings.shape[-1]
-        
-        # 标准化 node embeddings - 处理不同格式
+
         standardized_embeddings = []
         valid_node_ids = []
-        
+
         for i, (nid, emb) in enumerate(zip(node_ids, node_embeddings)):
             try:
-                # 提取第一个 embedding 向量
                 if emb is None:
                     continue
-                
+
                 if isinstance(emb, list):
                     if len(emb) == 0:
                         continue
                     if isinstance(emb[0], list):
-                        # [[emb]] 格式
                         vec = np.array(emb[0], dtype=float)
                     elif isinstance(emb[0], (int, float)):
-                        # [emb] 格式
                         vec = np.array(emb, dtype=float)
                     else:
                         continue
                 else:
                     vec = np.array(emb, dtype=float).flatten()
-                
-                # 检查维度是否合理 (至少64维)
+
                 if vec.size < 64:
                     continue
-                
-                # 维度对齐：截断或填充到 query_embedding_dim
+
                 if vec.size > query_embedding_dim:
                     vec = vec[:query_embedding_dim]
                 elif vec.size < query_embedding_dim:
-                    # 填充0
                     vec = np.pad(vec, (0, query_embedding_dim - vec.size))
-                
+
                 standardized_embeddings.append(vec)
                 valid_node_ids.append(nid)
-            except Exception as e:
-                # 跳过无法处理的 embedding
+            except Exception:
                 continue
-        
+
         if not standardized_embeddings:
             return []
-        
-        # 转换为 numpy 数组
+
         node_embeddings = np.array(standardized_embeddings)
         n_nodes = len(valid_node_ids)
         node_embedding_dim = node_embeddings.shape[-1]
-        
-        # Check for dimension mismatch
+
         if query_embedding_dim != node_embedding_dim:
-            # Use a simpler approach: for each query, compute similarity with each node
             similarities = np.zeros((n_queries, n_nodes))
-            
             for i in range(n_queries):
-                query_emb = query_embeddings[i].reshape(1, -1)  # Ensure 2D
-                
+                query_emb = query_embeddings[i].reshape(1, -1)
                 for j in range(n_nodes):
-                    # 已经标准化为1维，直接使用
-                    node_emb = node_embeddings[j].reshape(1, -1)  # Ensure 2D
-                    
-                    # Compute cosine similarity between embeddings of different dimensions
-                    # We'll use the first min(query_dim, node_dim) dimensions
+                    node_emb = node_embeddings[j].reshape(1, -1)
                     min_dim = min(query_embedding_dim, node_embedding_dim)
-                    q_truncated = query_emb[:, :min_dim]
-                    n_truncated = node_emb[:, :min_dim]
-                    
-                    sim = cosine_similarity(q_truncated, n_truncated)[0, 0]
+                    sim = cosine_similarity(query_emb[:, :min_dim], node_emb[:, :min_dim])[0, 0]
                     similarities[i, j] = sim
         else:
-            # Dimensions match, use the original approach
-            # Calculate similarities - node_embeddings 已经是 (n_nodes, dim) 格式
             query_reshaped = query_embeddings.reshape(-1, query_embedding_dim)
-            node_reshaped = node_embeddings  # 已经是 (n_nodes, dim)
-            
-            similarities = cosine_similarity(query_reshaped, node_reshaped)
-            
-            # 确保形状正确
+            similarities = cosine_similarity(query_reshaped, node_embeddings)
             if similarities.shape[0] > n_queries:
                 similarities = similarities[:n_queries, :]
             if similarities.shape[1] > n_nodes:
                 similarities = similarities[:, :n_nodes]
-        
-        # Apply the specified mode
-        # Now similarities is (n_queries, n_nodes)
+
         if mode == "sum":
-            # Sum across queries
             similarities = np.sum(similarities, axis=0)
         elif mode == "mean":
-            # Mean across queries  
             similarities = np.mean(similarities, axis=0)
         elif mode == "max":
-            # Max across queries
             similarities = np.max(similarities, axis=0)
         elif mode == "min":
-            # Min across queries
             similarities = np.min(similarities, axis=0)
         else:
             raise ValueError(f"Invalid mode: {mode}")
-        
-        # Create results
+
         results = [(node_id, sim) for node_id, sim in zip(valid_node_ids, similarities)]
         return sorted(results, key=lambda x: x[1], reverse=True)
 
@@ -797,22 +691,7 @@ class VideoGraph:
         return sorted(results, key=lambda x: x[1], reverse=True)
 
     def get_entity_info(self, anchor_nodes, drop_threshold=0.9):
-        """Get information about entities by retrieving connected episodic and semantic nodes.
-        
-        This function takes a list of anchor nodes and finds all connected image and voice nodes as entity nodes.
-        For each entity node, it retrieves all connected episodic nodes and semantic nodes. The semantic nodes
-        are filtered to remove redundant information by comparing similarity between node embeddings.
-
-        Args:
-            anchor_nodes (list): List of node IDs to use as anchor points for finding entities
-            drop_threshold (float): Similarity threshold above which semantic nodes are considered redundant (default: 0.9)
-            
-        Returns:
-            list: List of node IDs for episodic and filtered semantic nodes connected to all found entities
-            
-        Raises:
-            ValueError: If any found entity node ID is not found or is not an image/voice node
-        """
+        """Retrieve connected episodic and filtered semantic nodes for entities linked to the given anchor nodes."""
         entity_nodes = set()
         for anchor_node in anchor_nodes:
             entity_nodes.update(self.get_connected_nodes(anchor_node, type=['voice', 'img']))
@@ -863,11 +742,7 @@ class VideoGraph:
     # Visualization functions
     
     def print_faces(self, img_nodes, print_num=5):
-        """Print faces for given image nodes in a grid layout with 9 faces per row.
-        
-        Args:
-            img_nodes (list): List of image node IDs to display faces for
-        """
+        """Display faces for given image nodes in a grid layout."""
         # Skip if no nodes to display
         if not img_nodes:
             return
